@@ -13,6 +13,7 @@ import { count, setStatus } from './status.js';
 import { plannerPrompt } from './prompts.js';
 import { agentArgv } from './argv.js';
 import { runAgent } from './agent.js';
+import { learn } from '../learn/learn.js';
 
 const MAX_TASKS = 30;
 
@@ -199,6 +200,7 @@ export async function drain(ctx, group, opts) {
     if (r.ok) {
       count(ctx.root, 'landed');
       count(ctx.root, 'landedMs', Date.now() - taskStarted);
+      await learn(ctx, opts.agent, log);
     } else count(ctx.root, 'stopped');
     details.push(`${next.title}: ${r.summary}`);
     log(`task ${next.id} ${r.ok ? 'landed' : 'stopped'}: ${r.summary}`);

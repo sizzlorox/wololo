@@ -62,7 +62,7 @@ test('the TUI manages wololo end to end: board, queue, usage, config, health, co
 
   // Board: list + details, every tab in the bar
   await t.until(/Day night cycle body/);
-  for (const tab of ['Autopilot', 'Transcript', 'Board', 'Queue', 'Health', 'Usage', 'Config', 'Commands']) assert.match(t.screen(), new RegExp(tab));
+  for (const tab of ['Autopilot', 'Transcript', 'Board', 'Queue', 'Learned', 'Health', 'Usage', 'Config', 'Commands']) assert.match(t.screen(), new RegExp(tab));
   assert.match(t.screen(), /blocked on human/);
   assert.match(t.screen(), /did not converge/, 'the details pane shows the notes');
 
@@ -93,7 +93,7 @@ test('the TUI manages wololo end to end: board, queue, usage, config, health, co
   assert.equal(readQueue(repo)[0].status, 'done');
 
   // Usage: totals, cache, saved, roles
-  t.type('6');
+  t.type('7');
   await t.until(/cache hits/);
   assert.match(t.screen(), /90% of prompt tokens/);
   assert.match(t.screen(), /median turn\s+7\.0k/);
@@ -101,7 +101,7 @@ test('the TUI manages wololo end to end: board, queue, usage, config, health, co
   assert.match(t.screen(), /builder\s+1 runs/);
 
   // Config: edit a setting (validated), then try an invalid value
-  t.type('7');
+  t.type('8');
   await t.until(/Settings/);
   const rows = flatten(loadConfig(repo)).filter(([k]) => k !== 'root').map(([k]) => k);
   t.type('\x1b[B'.repeat(rows.indexOf('autopilot.maxIterations')));
@@ -118,13 +118,13 @@ test('the TUI manages wololo end to end: board, queue, usage, config, health, co
   assert.equal(JSON.parse(readFileSync(join(repo, 'wololo.config.json'), 'utf8')).autopilot.maxIterations, 9, 'an invalid value never reaches the file');
 
   // Health: run check in a child, read its parts
-  t.type('5');
+  t.type('6');
   await t.until(/no check run yet/);
   t.type('c');
   await t.until(/wololo check: check (passed|failed)/);
 
   // Commands: filter, fill the form, read the result
-  t.type('8');
+  t.type('9');
   await t.until(/Usage/);
   t.type('/');
   await t.until(/Filter commands/);

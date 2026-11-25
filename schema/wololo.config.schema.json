@@ -52,6 +52,7 @@
         "verifiers": { "type": "number" },
         "maxIterations": { "type": "number" },
         "models": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Model per harness for autopilot runs, e.g. {\"claude\": \"opus\", \"omp\": \"local-gpu/nemotron-super\"}. Unset: the harness's own default. Change it mid-run with m on the TUI's Autopilot tab; the next agent uses it." },
+        "learn": { "type": "string", "enum": ["auto", "suggest", "off"], "description": "Learned skills. After each step lands, wololo looks for workflows agents keep repeating. auto (default): one agent writes it down as a script or short skill, given only to agents whose step and role match; kept if those agents then need fewer turns, retired if not. suggest: only queue what it noticed. off: nothing." },
         "workers": { "type": "integer", "minimum": 1, "maximum": 8, "description": "How many plan steps autopilot builds at once, each by its own agent in its own git worktree, merged back one at a time through the gate (default 1). Agents share one model server: on a local GPU more workers split its context and speed." },
         "mergeCommand": { "type": "string" },
         "contextWindow": { "type": "integer", "minimum": 1000, "description": "Agent context window in tokens. Sizes planned tasks and caps the output handed to agents." },

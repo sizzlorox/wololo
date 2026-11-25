@@ -4,11 +4,12 @@ import { boardScreen } from './screens/board.js';
 import { commandsScreen } from './screens/commands.js';
 import { configScreen } from './screens/config.js';
 import { health } from './screens/health.js';
+import { learnedScreen } from './screens/learned.js';
 import { queueScreen } from './screens/queue.js';
 import { transcriptScreen } from './screens/transcript.js';
 import { usage } from './screens/usage.js';
 
-export const TABS = ['autopilot', 'transcript', 'board', 'queue', 'health', 'usage', 'config', 'commands'];
+export const TABS = ['autopilot', 'transcript', 'board', 'queue', 'learned', 'health', 'usage', 'config', 'commands'];
 
 /**
  * Open the TUI. The registry is imported here, not at the top, because it imports this file.
@@ -17,7 +18,7 @@ export const TABS = ['autopilot', 'transcript', 'board', 'queue', 'health', 'usa
  */
 export async function openTui(ctx, opts = {}) {
   const { COMMANDS } = await import('../../registry.js');
-  await runApp(ctx, { screens: [autopilot, transcriptScreen, boardScreen, queueScreen, health, usage, configScreen, commandsScreen(COMMANDS)], ...opts });
+  await runApp(ctx, { screens: [autopilot, transcriptScreen, boardScreen, queueScreen, learnedScreen, health, usage, configScreen, commandsScreen(COMMANDS)], ...opts });
 }
 
 /** @type {import('../../core/types.js').Command[]} */

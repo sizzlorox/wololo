@@ -13,26 +13,16 @@ import { clip, failureBudget } from './budget.js';
 import { gateFailures, log, runLoop } from './loop.js';
 import { order, scaffoldIfUnverifiable } from './plan.js';
 import { mergerPrompt } from './prompts.js';
+import { overlaps } from './areas.js';
+
+export { overlaps };
 import { annotate } from './annotate.js';
+import { learn } from '../learn/learn.js';
 import { count, readStatus, setStatus } from './status.js';
 
 const board = Object.fromEntries(boardCommands.map((c) => [c.name, c]));
 /** Merge attempts (merger agent, then retry) before a step is blocked on a human. */
 const MERGE_ATTEMPTS = 2;
-
-/** The fixed part of a path or glob: `src/**\/*.rs` → `src`. @param {string} p */
-const prefix = (p) => p.replace(/\\/g, '/').replace(/^\.\//, '').split('*')[0].replace(/\/+$/, '');
-
-/**
- * Can two steps' areas collide? A dir contains its files; globs compare by their fixed prefix;
- * a step that declared nothing may touch anything.
- * @param {string[]} a @param {string[]} b
- */
-export function overlaps(a, b) {
-  if (!a.length || !b.length) return true;
-  const within = (/** @type {string} */ x, /** @type {string} */ y) => x === y || !y || x.startsWith(`${y}/`);
-  return a.some((x) => b.some((y) => within(prefix(x), prefix(y)) || within(prefix(y), prefix(x))));
-}
 
 /**
  * Which steps to start now: their deps landed and merged (a split step counts once all its parts did),
@@ -308,6 +298,7 @@ export async function runParallel(ctx, group, opts) {
       delete mergeState[id];
       const t = readTask(root, id);
       details.push(`${t?.title ?? id}: ${ok ? 'merged' : 'could not merge'}`);
+      if (ok) await learn(ctx, opts.agent, log);
       publish();
       continue;
     }

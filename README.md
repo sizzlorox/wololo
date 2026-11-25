@@ -41,7 +41,7 @@ Then use the TUI: run the gate on **Health**, add work on **Board**, press `n` o
 
 ## TUI
 
-`wololo` opens it. Runs continue in the background after `q`. Switch tabs with `1`–`8` or `tab`; `?` lists every key on the current tab.
+`wololo` opens it. Runs continue in the background after `q`. Switch tabs with `1`–`9` or `tab`; `?` lists every key on the current tab.
 
 | Tab | What |
 |---|---|
@@ -49,6 +49,7 @@ Then use the TUI: run the gate on **Health**, add work on **Board**, press `n` o
 | Transcript | Everything sent to and from the model per run, live, with the endpoint and secret warnings |
 | Board | Tasks: add, edit, move, block, release, delete, build |
 | Queue | Findings: add, resolve, turn into tasks, cluster |
+| Learned | Skills wololo learned from repeated agent work, their trigger and trial result. `p` keep · `x` retire · `d` delete |
 | Health | gate, verify, check, score, doctor, garden, with drill-down |
 | Usage | Tokens per run and role, prompt size, cache hits, cost |
 | Config | Every setting, validated on save |
@@ -71,6 +72,15 @@ Headless agents run with full permissions (e.g. Claude `bypassPermissions`). Use
 - Branches merge one at a time through the gate. A merger agent resolves conflicts.
 - Agents share notes after each tool call and are warned before editing another step's files.
 
+## Learned skills
+
+After each step lands, wololo compares the agent runs so far. When agents keep repeating the same sequence of tool calls (3+ runs across 2+ steps), one agent writes it down as a small script or a short skill, with a trigger: which files and roles it applies to.
+
+- Only agents whose step and role match get it, in their prompt. Nobody else pays for it in context.
+- It starts on trial. It is kept if those agents then need fewer turns, and retired if they don't, or if it never matches.
+- Claude Code users can also call one by hand (`/learned-<id>`); Claude doesn't see it otherwise.
+- Stored in `.wololo/learned/`, committed with the repo. `autopilot.learn`: `auto` (default), `suggest` (only queue what it noticed) or `off`.
+
 ## Local models
 
 Set `autopilot.contextWindow` to your server's context size. Steps, prompts, tools and thinking level shrink to fit, and stuck agents (circling, stalled, compaction loops) are killed and resumed.
@@ -88,6 +98,7 @@ The Transcript tab shows what is sent: prompts, tool results (including file con
 | `agent` | first picked | Agent CLI that builds |
 | `models` | – | Model per agent, e.g. `{"claude": "sonnet", "omp": "local-gpu/nemotron-super"}`. `m` changes it mid-run |
 | `workers` | 1 | Steps built at once |
+| `learn` | auto | Learned skills: `auto`, `suggest` or `off` |
 | `contextWindow` | – | Model context in tokens |
 | `maxIterations` | 5 | Fix/verify rounds per step |
 | `verifiers` | 1 | Verifier passes per green gate |

@@ -4,6 +4,7 @@ import { splitCommand } from '../../core/exec.js';
 import { readText } from '../../core/files.js';
 import { templatePath } from '../../core/templates.js';
 import { loadAgents, loadSkills } from './sources.js';
+import { listLearned } from '../learn/store.js';
 
 /** @typedef {import('../../adapters/types.js').FileOp} FileOp */
 
@@ -35,6 +36,14 @@ export function buildOps(ctx) {
     for (const s of skills) for (const f of s.files) ops.push({ kind: 'write', path: `${dir}/${s.name}/${f.rel}`, content: f.content });
   }
   for (const a of adapters) ops.push(...a.ops(sctx));
+  // Learned skills reach autopilot agents through their prompts. Claude Code users can also call one
+  // by hand (/learned-<id>); disable-model-invocation keeps it out of Claude's context otherwise.
+  if (config.harnesses.includes('claude')) {
+    for (const l of listLearned(root, true).filter((x) => x.status !== 'retired')) {
+      const body = l.body.replaceAll('{{script}}', `node .wololo/learned/${l.id}/run.mjs`);
+      ops.push({ kind: 'write', path: `.claude/skills/learned-${l.id}/SKILL.md`, content: `---\nname: learned-${l.id}\ndescription: ${l.title.replace(/\n/g, ' ')} (learned by wololo from repeated agent work)\ndisable-model-invocation: true\n---\n\n# ${l.title}\n\n${body}\n` });
+    }
+  }
   if (config.ci.provider === 'github') ops.push({ kind: 'write', path: '.github/workflows/wololo.yml', content: ciWorkflow(sctx) });
   return ops;
 }

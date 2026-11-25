@@ -63,9 +63,10 @@ export function progress(root, base) {
  * @param {string[]} argv
  * @param {string} role
  * @param {(msg: string) => void} log
+ * @param {{ task?: string, learned?: string[] }} [meta]  recorded with the run's usage: its step, and the learned skills it was given
  * @returns {Promise<import('../../core/exec.js').ExecResult & { unfinished?: string, raw: string, cutoff?: number }>}  `unfinished` says why the agent did not end on its own; `raw` is stdout before streamed JSON became the answer; `cutoff` is the most output tokens a cut-off reply had
  */
-export async function runAgent(ctx, argv, role, log) {
+export async function runAgent(ctx, argv, role, log, meta = {}) {
   const minutes = ctx.config.autopilot.agentTimeoutMinutes ?? DEFAULT_TIMEOUT_MINUTES;
   ensureDir(statePath(ctx.root));
   const file = statePath(ctx.root, 'autopilot.log');
@@ -83,7 +84,7 @@ export async function runAgent(ctx, argv, role, log) {
   const label = worker ? `${role} · ${readTask(ctx.root, worker)?.title ?? worker}` : role;
   const transcript = recorder(ctx.root, label, prompt);
   // usage is saved from the first moment, then after every turn: a run that never ends still counts
-  const usageRecord = () => ({ type: /** @type {'agent'} */ ('agent'), id: transcript.id, transcript: transcript.id, role: label, ts: new Date(started).toISOString(), promptChars: prompt.length, model, live: true, ...spent.summary() });
+  const usageRecord = () => ({ type: /** @type {'agent'} */ ('agent'), id: transcript.id, transcript: transcript.id, role: label, ts: new Date(started).toISOString(), promptChars: prompt.length, model, live: true, task: meta.task ?? worker, learned: meta.learned ?? [], ...spent.summary() });
   let liveShown = 0;
   /** @type {string | undefined} */
   let model;

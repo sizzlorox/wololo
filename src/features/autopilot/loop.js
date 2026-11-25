@@ -10,6 +10,7 @@ import { builderPrompt, fixerPrompt, verifierPrompt } from './prompts.js';
 import { refreshConfig } from './adopt.js';
 import { CONTEXT_LOOP, OUTPUT_CAP, OUTPUT_CAP_FIX, runAgent } from './agent.js';
 import { agentArgv } from './argv.js';
+import { learnedFor } from '../learn/store.js';
 
 const board = Object.fromEntries(boardCommands.map((c) => [c.name, c]));
 
@@ -112,8 +113,10 @@ export async function runLoop(ctx, opts) {
 
   /** @param {string} role @param {string} prompt */
   const spawnAgent = async (role, prompt) => {
-    const argv = agentArgv(config, opts.agent, prompt, { root });
-    const r = await runAgent(ctx, argv, role, log);
+    const t = opts.task;
+    const learned = learnedFor(root, { role, touches: t?.touches ?? [], text: t ? `${t.title}\n${t.body}` : (opts.goal ?? '') });
+    const argv = agentArgv(config, opts.agent, prompt + learned.text, { root });
+    const r = await runAgent(ctx, argv, role, log, { task: t?.id, learned: learned.ids });
     const output = tail(`${r.stdout}\n${r.stderr}`, 15);
     const overflow = overflowHint(output, config.autopilot);
     log(`${argv[0]} exited ${r.code}\n${output}${overflow ? `\n${overflow}` : ''}`);
