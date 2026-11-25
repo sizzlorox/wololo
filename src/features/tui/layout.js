@@ -29,8 +29,10 @@ export function wrap(text, w) {
   /** @type {string[]} */
   const out = [];
   for (const line of text.split('\n')) {
-    const indent = /^\s*/.exec(line)?.[0] ?? '';
-    let rest = line.slice(indent.length);
+    const lead = /^\s*/.exec(line)?.[0] ?? '';
+    // indentation keeps at most half the width: wider, and no text would fit after it, forever
+    const indent = lead.length <= w / 2 ? lead : ' '.repeat(Math.floor(w / 2));
+    let rest = line.slice(lead.length);
     if (!rest) {
       out.push('');
       continue;

@@ -11,6 +11,7 @@ const RUNS = [
   { key: 's', label: 'score', args: ['score'] },
   { key: 'd', label: 'doctor', args: ['doctor'] },
   { key: 'G', label: 'garden', args: ['garden'] },
+  { key: 'C', label: 'clean', args: ['clean'] },
 ];
 
 /**

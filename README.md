@@ -115,6 +115,10 @@ The Transcript tab shows what is sent: prompts, tool results (including file con
 
 Other keys: `verify.steps`, `gate.minScore`, `harnesses`, `mcp.tools`, `sources`. See `schema/wololo.config.schema.json`.
 
+## Housekeeping
+
+Autopilot tidies `.wololo/state` when it starts: logs over 5MB rotate (`autopilot.log` → `.1` → `.2` → `.3`, oldest dropped), transcripts are capped at the newest 100MB, and stale temp files, unheld locks, finished workers' files and merged worktrees and branches are removed. Unmerged or running work is never touched. Run it yourself with `wololo clean` (`--dry-run` to preview) or `C` on the Health tab.
+
 ## Commands
 
 `wololo help` lists them; `--json` gives machine output. Most are also MCP tools (`wololo_<command>`).

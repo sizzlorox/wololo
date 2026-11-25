@@ -105,3 +105,12 @@ test('usage: a model server that never reports cached tokens shows "not reported
   assert.doesNotMatch(out, /0% of prompt tokens/);
   assert.match(out, /cache hits +not reported\b/, 'the run detail too');
 });
+
+test('wrap never loops on a line indented wider than the pane (deep JSON in a tool result)', () => {
+  const deep = `${' '.repeat(60)}"key": "value with several words in it"`;
+  const out = wrap(deep, 40);
+  assert.ok(out.length < 20, `${out.length} lines`);
+  assert.ok(out.every((l) => l.length <= 40));
+  assert.match(out.join(' '), /several words/, 'nothing is lost');
+  assert.ok(wrap('x'.repeat(500), 6).length <= 100, 'a long word at a tiny width is cut, not looped on');
+});

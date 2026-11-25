@@ -13,6 +13,7 @@ import { VERSION } from '../../core/version.js';
 import { plan } from './plan.js';
 import { runWorker } from './worker.js';
 import { tasteSample } from './taste.js';
+import { clean } from '../clean/clean.js';
 import { buildGroup } from './review.js';
 import { builderPrompt, fixerPrompt, plannerPrompt, VERIFIER_FOCUS, verifierPrompt } from './prompts.js';
 
@@ -73,6 +74,10 @@ export const commands = [
         const { openTui } = await import('../tui/command.js');
         await openTui(ctx, { tab: 'autopilot' });
         return { ok: true, summary: '', stdout: '' };
+      }
+      if (!process.env.WOLOLO_WORKER) {
+        const tidy = clean(root);
+        if (tidy.actions.length) log(`housekeeping: freed ${(tidy.freed / 1024 / 1024).toFixed(1)}MB (${tidy.actions.length} action(s); wololo clean --dry-run shows what it does)`);
       }
       startStatus(root, { goal, group: input.group, task: task && { id: task.id, title: task.title, started: new Date().toISOString() }, contextWindow: window, agentCli: agent, workers: config.autopilot.workers ?? 1, version: VERSION, stallMinutes: config.autopilot.stallMinutes ?? DEFAULT_STALL_MINUTES });
       log(`watch it live: ${config.bin} watch`);

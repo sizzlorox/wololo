@@ -3,6 +3,7 @@ import { commands as bench } from './features/bench/command.js';
 import { commands as board } from './features/board/command.js';
 import { commands as bottleneck } from './features/bottleneck/command.js';
 import { commands as check } from './features/check/command.js';
+import { commands as clean } from './features/clean/command.js';
 import { commands as codemod } from './features/codemod/command.js';
 import { commands as doctor } from './features/doctor/command.js';
 import { commands as garden } from './features/garden/command.js';
@@ -29,7 +30,7 @@ import { commands as watch } from './features/watch/command.js';
 export const GROUPS = {
   'Setup': [...tui, ...init, ...sync, ...doctor],
   'Verification (inner loop)': [...verify, ...check, ...score, ...gate, ...autopilot, ...watch, ...bench],
-  'Environment & constraints': [...rules, ...codemod, ...garden, ...hook],
+  'Environment & constraints': [...rules, ...codemod, ...garden, ...clean, ...hook],
   'Outer loop & coordination': [...queue, ...board, ...bottleneck, ...projects],
   'Review & trust': [...review, ...trust],
   'Skills & memory': [...skills, ...transcripts],

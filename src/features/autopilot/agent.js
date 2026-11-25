@@ -2,6 +2,7 @@ import { gitOut } from '../../core/git.js';
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { run } from '../../core/exec.js';
 import { ensureDir } from '../../core/files.js';
+import { rotate } from '../../core/rotate.js';
 import { statePath } from '../../core/state.js';
 import { parseLine } from './activity.js';
 import { addActivity, count, setStatus } from './status.js';
@@ -69,6 +70,9 @@ export async function runAgent(ctx, argv, role, log, meta = {}) {
   ensureDir(statePath(ctx.root));
   const file = statePath(ctx.root, 'autopilot.log');
   const raw = statePath(ctx.root, 'agent-stream.log');
+  // ponytail: 5MB per log, 3 generations; make it a setting if someone needs more history
+  rotate(file, 5 * 1024 * 1024);
+  rotate(raw, 5 * 1024 * 1024);
   appendFileSync(file, `\n===== ${new Date().toISOString()} ${role}: ${argv[0]} =====\n`);
   writeFileSync(raw, '');
   let last = '';
