@@ -28,7 +28,7 @@ const KEEP = 60;
  * @property {number} [contextWindow]
  * @property {{ at: string, line: string }[]} activity
  * @property {string} [summary]     how the run ended
- * @property {{ workers: number, main: string, running: { id: string, title: string, started: string, dir: string }[], queue: { id: string, title: string, state: string }[] }} [parallel]  set while steps build in parallel
+ * @property {{ workers: number, main: string, running: { id: string, title: string, started: string, dir: string }[], queue: { id: string, title: string, state: string }[], waiting?: Record<string, string>, hotspot?: { file: string, steps: number } }} [parallel]  set while steps build in parallel
  */
 
 /**

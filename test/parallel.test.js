@@ -261,3 +261,47 @@ if (process.argv[2].includes('You are the merger')) {
   assert.equal(readFileSync(join(repo, 'shared.txt'), 'utf8'), 'from main\nfrom alpha\n');
   assert.ok(!existsSync(join(repo, 'theirs.txt')), 'the interrupted merger\'s scratch file never reached main');
 });
+
+test('waitReasons: each waiting step says what it waits for: an unmerged dep, or a file a running step shares', async () => {
+  const { waitReasons, hotspot } = await import('../src/features/autopilot/parallel.js');
+  /** @param {string} id @param {string} status @param {string[]} touches @param {string[]} [deps] */
+  const s = (id, status, touches, deps = []) => /** @type {any} */ ({ id, title: `Step ${id}`, status, seq: Number(id), touches, deps });
+  const plan = [s('29', 'claimed', ['src/sim/settlement.ts', 'src/sim/villager.ts']), s('30', 'todo', ['src/sim/settlement.ts', 'src/sim/mind.ts'], ['29']), s('34', 'todo', ['src/sim/settlement.ts', 'src/sim/lifecycle.ts']), s('40', 'todo', ['src/ui/hud.ts'])];
+  const why = waitReasons(plan, { running: ['29'], unmerged: [], workers: 5 });
+  assert.equal(why['30'], 'needs Step 29 merged');
+  assert.equal(why['34'], 'shares src/sim/settlement.ts with Step 29 (running)');
+  assert.equal(why['40'], undefined, 'nothing holds it: it will start');
+  assert.equal(why['29'], undefined, 'running steps do not wait');
+
+  assert.deepEqual(hotspot(plan), { file: 'src/sim/settlement.ts', steps: 3 }, 'one file most open steps change');
+  assert.equal(hotspot(plan.slice(2)), undefined, 'no file shared by most steps');
+});
+
+test('seam: a hotspot file gets one registry step first; the steps that changed it depend on it and are re-annotated once it lands', async () => {
+  const { addSeam, afterSeam } = await import('../src/features/autopilot/seam.js');
+  const { writeTask } = await import('../src/features/board/store.js');
+  setup();
+  const now = new Date().toISOString();
+  const mk = (/** @type {string} */ n, /** @type {string[]} */ touches, /** @type {string[]} */ deps = []) => writeTask(repo, { id: `g-${n}`, title: `Wire ${n}`, group: 'g', body: '', status: 'todo', queue: [], notes: [], seq: Number(n), deps, touches, created: now, updated: now });
+  mk('1', ['src/tick.ts', 'src/needs.ts']);
+  mk('2', ['src/tick.ts', 'src/mind.ts'], ['g-1']);
+  mk('3', ['src/tick.ts', 'src/path.ts'], ['g-1']);
+  mk('4', ['src/ui.ts']);
+  const seam = addSeam(repo, 'g');
+  assert.ok(seam, 'a seam step was added');
+  const all = () => Object.fromEntries(readTasks(repo).map((t) => [t.id, t]));
+  const t = all();
+  assert.deepEqual(t[seam.id].touches, ['src/tick.ts']);
+  assert.ok((t[seam.id].seq ?? 1) < 1, 'it goes first');
+  assert.match(t[seam.id].body, /registry/);
+  for (const id of ['g-1', 'g-2', 'g-3']) assert.ok(t[id].deps?.includes(seam.id), `${id} waits for the seam`);
+  assert.ok(!t['g-4']?.deps?.includes(seam.id), 'a step that never touched the file does not wait');
+  assert.equal(addSeam(repo, 'g'), undefined, 'only once per file');
+
+  writeTask(repo, { ...t[seam.id], status: 'done' });
+  assert.equal(afterSeam(repo, 'g'), 3, 'the three steps are queued for re-annotation');
+  const after = all();
+  for (const id of ['g-1', 'g-2', 'g-3']) assert.deepEqual(after[id].touches, [], `${id} lists its files again, now that the registry exists`);
+  assert.deepEqual(after['g-4'].touches, ['src/ui.ts']);
+  assert.equal(afterSeam(repo, 'g'), 0, 'once');
+});

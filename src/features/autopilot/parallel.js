@@ -18,6 +18,9 @@ import { overlaps } from './areas.js';
 
 export { overlaps };
 import { annotate } from './annotate.js';
+import { addSeam, afterSeam, hotspot } from './seam.js';
+
+export { hotspot };
 import { learn } from '../learn/learn.js';
 import { tasteSample } from './taste.js';
 import { count, readStatus, setStatus } from './status.js';
@@ -53,6 +56,43 @@ export function pickReady(tasks, now) {
     picked.push(t);
   }
   return picked;
+}
+
+
+/**
+ * Why each open step that will not start now is waiting: an unmerged dep, a shared file, or no free worker.
+ * @param {import('../board/store.js').Task[]} tasks
+ * @param {{ running: string[], unmerged: string[], workers: number }} now
+ * @returns {Record<string, string>} task id → reason
+ */
+export function waitReasons(tasks, now) {
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const ready = new Set(pickReady(tasks, now).map((t) => t.id));
+  const busy = tasks.filter((t) => now.running.includes(t.id) || now.unmerged.includes(t.id));
+  /** @param {string} id @returns {boolean} */
+  const landed = (id) => {
+    const t = byId.get(id);
+    return !t || (t.status === 'done' && !now.unmerged.includes(id) && (t.splitInto ?? []).every(landed));
+  };
+  /** @type {Record<string, string>} */
+  const out = {};
+  for (const t of tasks) {
+    const open = t.status === 'todo' || (t.status === 'claimed' && t.agent?.startsWith('autopilot:'));
+    if (!open || ready.has(t.id) || now.running.includes(t.id)) continue;
+    const dep = (t.deps ?? []).find((d) => !landed(d));
+    if (dep) {
+      out[t.id] = `needs ${byId.get(dep)?.title ?? dep} merged`;
+      continue;
+    }
+    const other = busy.find((o) => overlaps(t.touches ?? [], o.touches ?? []));
+    if (other) {
+      const shared = (t.touches ?? []).find((x) => overlaps([x], other.touches ?? [])) ?? 'files';
+      out[t.id] = !t.touches?.length ? `does not say which files it changes, so it runs alone` : `shares ${shared} with ${other.title} (${now.running.includes(other.id) ? 'running' : 'merging'})`;
+      continue;
+    }
+    out[t.id] = 'no free worker';
+  }
+  return out;
 }
 
 
@@ -145,7 +185,7 @@ export async function runParallel(ctx, group, opts) {
     writeFileSync(statePath(root, 'claims', `${group}.json`), JSON.stringify(Object.fromEntries([...running].map(([id, w]) => [id, { title: w.title, touches: w.touches }]))));
     setStatus(root, {
       group,
-      parallel: { workers, main, running: [...running].map(([id, w]) => ({ id, title: w.title, started: w.started, dir: w.dir })), queue: unmerged.map((id) => ({ id, title: readTask(root, id)?.title ?? id, state: mergeState[id] ?? 'waiting' })) },
+      parallel: { workers, main, running: [...running].map(([id, w]) => ({ id, title: w.title, started: w.started, dir: w.dir })), queue: unmerged.map((id) => ({ id, title: readTask(root, id)?.title ?? id, state: mergeState[id] ?? 'waiting' })), waiting: waitReasons(all(), { running: [...running.keys()], unmerged, workers }), hotspot: hotspot(all()) },
     });
   };
   mkdirSync(statePath(root, 'claims'), { recursive: true });
@@ -287,6 +327,8 @@ export async function runParallel(ctx, group, opts) {
 
   // steps that never said what they need or change would each run alone
   await annotate(ctx, opts.agent, group);
+  const seam = addSeam(root, group);
+  if (seam) log(`${seam.touches?.[0]} is changed by most remaining steps, so they would run one at a time; added "${seam.title}" first`);
   for (let pass = 0; ; pass++) {
     scaffoldIfUnverifiable(ctx, group, all(), pass === 0);
     for (const t of pickReady(all(), { running: [...running.keys()], unmerged, workers })) start(t);
@@ -299,6 +341,8 @@ export async function runParallel(ctx, group, opts) {
       const t = readTask(root, id);
       details.push(`${t?.title ?? id}: ${ok ? 'merged' : 'could not merge'}`);
       if (ok) {
+        // a seam landed: its dependents list their files again, now against the registry
+        if (afterSeam(root, group)) await annotate(ctx, opts.agent, group);
         await learn(ctx, opts.agent, log);
         tasteSample(root, log);
       }

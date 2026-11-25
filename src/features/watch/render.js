@@ -139,6 +139,7 @@ function planBody(v, c, inner, room) {
     let tail = '';
     if (t.splitInto?.length) tail = c('2', `  split into ${t.splitInto.length}`);
     else if (t.status === 'blocked') tail = c('31', ` (blocked on ${t.blockedOn ?? '?'})`);
+    else if (s.parallel?.waiting?.[t.id] && v.alive) tail = c('2', `  ${s.parallel.waiting[t.id]}`);
     else if (now && s.task?.started) tail = c('33', `  ${duration(v.now - Date.parse(s.task.started))}`);
     const pick = t.id === v.selected;
     body.push(`${indent}${pick ? c('1', '› ') : '  '}${c(MARK_COLOR[mark], mark)} ${pick ? c('1', t.title) : t.title}${tail}`);
@@ -231,8 +232,7 @@ export function details(t, w, h) {
 /** One block per parallel worker: its step, agent, time, tokens and what it is thinking. @param {View} v @param {import('./widgets.js').Paint} c @param {number} inner */
 function workersBody(v, c, inner) {
   const ws = v.workers ?? [];
-  if (!ws.length) return [c('2', 'merging')];
-  return ws.flatMap((w) => {
+  const blocks = ws.flatMap((w) => {
     const a = w.status?.agent;
     const u = a?.usage;
     const sent = u ? u.input + u.cacheRead + u.cacheWrite : 0;
@@ -242,4 +242,16 @@ function workersBody(v, c, inner) {
       ...(a?.live ? [`  ${c('2', `${a.liveOf === 'reply' ? 'writes' : 'thinks'}: ${a.live.replace(/\s+/g, ' ').slice(-(inner - 12))}`)}`] : []),
     ];
   });
+  // idle workers say why: a step waiting on a dep or a shared file looks like a broken run otherwise
+  const par = v.status?.parallel;
+  const idle = (par?.workers ?? 0) - ws.length;
+  const waiting = Object.values(par?.waiting ?? {});
+  const why = [];
+  if (idle > 0 && waiting.length) {
+    const shared = waiting.filter((w) => w.startsWith('shares ')).length;
+    const deps = waiting.filter((w) => w.startsWith('needs ')).length;
+    why.push(c('2', `${idle} idle: ${[shared && `${shared} step(s) share files with running work`, deps && `${deps} wait for a dep to merge`].filter(Boolean).join(', ') || 'nothing else can start yet'}`));
+  }
+  if (par?.hotspot) why.push(c('33', `${par.hotspot.file} is changed by ${par.hotspot.steps} open steps, so they run one at a time. A registry there (each system registers itself) would let them run in parallel.`));
+  return [...(ws.length ? blocks : [c('2', par?.queue.length ? 'merging' : 'no step can start')]), ...why];
 }

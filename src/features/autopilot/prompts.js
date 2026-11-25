@@ -124,7 +124,8 @@ export function plannerPrompt(bin, goal, planPath, opts) {
       ? [
           `Up to ${opts.parallel} steps are built at the same time, each by its own agent on its own branch, then merged. So for every step also give:`,
           '- "deps": the numbers (1-based) of the earlier steps it really needs; [] when it needs none. Fewer deps = more runs in parallel.',
-          '- "touches": the files or dirs it will change (e.g. "src/time/", "Cargo.toml"). Steps whose touches overlap never run at once; shared files like a manifest or main entry point count. Keep steps in separate files where you can.',
+          '- "touches": the exact files it will change, test files included (e.g. "src/time/mod.rs", "tests/time.rs", "Cargo.toml"). Not whole dirs. Steps whose touches overlap never run at once; shared files like a manifest or main entry point count.',
+          '- If most steps would edit one central file (a main loop, a list of systems), make step 1 turn it into a registry each later step plugs into, and keep that file out of the later steps\' touches.',
         ]
       : []),
     `Use at most ${opts.maxTasks} steps. Prefer fewer when the goal is small.`,
