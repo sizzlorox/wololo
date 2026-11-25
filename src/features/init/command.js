@@ -16,7 +16,9 @@ const SEEDS = ['skills', 'agents', 'rules', 'rubric.json'];
 function defaultBin(root) {
   const pkg = readJson(join(root, 'package.json'), /** @type {any} */ (null));
   if (pkg?.name === 'wololo') return 'node bin/wololo.js';
-  return pkg ? 'npx --no-install wololo' : 'npx -y github:sizzlorox/wololo';
+  // installed into the project: run that copy; otherwise the global install (npm i -g github:sizzlorox/wololo).
+  // Not `npx github:…`: npx caches GitHub packages and keeps running the first version it downloaded.
+  return pkg?.devDependencies?.wololo || pkg?.dependencies?.wololo ? 'npx --no-install wololo' : 'wololo';
 }
 
 /**

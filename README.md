@@ -6,20 +6,24 @@ Works with Claude Code, Codex, Copilot, Cursor, Gemini CLI, Windsurf, opencode, 
 
 ## Install
 
-Not on npm yet (the npm package `wololo` is unrelated). Run it from GitHub:
+Not on npm yet (the npm package `wololo` is unrelated). Install it globally from GitHub:
 
 ```sh
-npx -y github:sizzlorox/wololo          # the TUI
-npx -y github:sizzlorox/wololo#<commit> # a specific version (npx caches GitHub packages)
+npm i -g github:sizzlorox/wololo        # install; run it again to update
+wololo                                  # in any repo: the TUI
 ```
+
+`init` sets `bin` to `wololo`, which agents and hooks use to call it. In CI, add the install to `ci.setup` in `wololo.config.json`: `"run: npm i -g github:sizzlorox/wololo"`.
+
+Avoid `npx github:…`: npx caches GitHub packages and keeps running the first version it downloaded.
 
 ## New project
 
 ```sh
 mkdir my-app && cd my-app && git init
-npx -y github:sizzlorox/wololo init     # pick your agents
+wololo init                             # pick your agents
 git add -A && git commit -m wololo
-npx -y github:sizzlorox/wololo          # press n, type the goal
+wololo                                  # press n, type the goal
 ```
 
 The first planned step scaffolds a verifiable project. Its test commands become the verify steps.
@@ -28,8 +32,8 @@ The first planned step scaffolds a verifiable project. Its test commands become 
 
 ```sh
 cd my-app
-npx -y github:sizzlorox/wololo init     # detects test/lint/start commands, asks for the rest
-npx -y github:sizzlorox/wololo doctor
+wololo init                             # detects test/lint/start commands, asks for the rest
+wololo doctor
 git add -A && git commit -m wololo
 ```
 
