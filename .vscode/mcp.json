@@ -1,0 +1,12 @@
+{
+  "servers": {
+    "wololo": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "bin/wololo.js",
+        "mcp"
+      ]
+    }
+  }
+}

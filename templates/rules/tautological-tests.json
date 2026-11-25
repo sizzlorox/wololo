@@ -1,0 +1,32 @@
+{
+  "$schema": "../../node_modules/wololo/schema/rule.schema.json",
+  "id": "tautological-tests",
+  "kind": "tautological-tests",
+  "severity": "error",
+  "files": [
+    "**/*.{test,spec}.{js,jsx,ts,tsx,mjs,cjs}",
+    "**/test_*.py",
+    "**/*_test.py",
+    "**/test/**/*.{js,mjs,ts}"
+  ],
+  "why": "Agents write tests that cannot fail (expect(true).toBe(true), assert x == x, no assertions) to look done.",
+  "fix": "Assert on observable behaviour of the code under test. Write the test first and watch it fail (TDD).",
+  "examples": {
+    "bad": [
+      {
+        "path": "src/a.test.ts",
+        "content": "test('works', () => {\n  expect(true).toBe(true);\n});\n"
+      },
+      {
+        "path": "tests/test_a.py",
+        "content": "def test_a():\n    assert 1 == 1\n"
+      }
+    ],
+    "good": [
+      {
+        "path": "src/b.test.ts",
+        "content": "test('adds', () => {\n  expect(add(1, 2)).toBe(3);\n});\n"
+      }
+    ]
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "prompt": "toCsv in src/csv.js breaks on real data. Make it RFC 4180 compliant: quote fields that contain commas, double quotes, CR or LF; escape embedded double quotes by doubling them; separate records with CRLF; render null and undefined as empty fields and numbers/booleans with String().",
+  "check": "node --test --test-timeout=5000 hidden/*.test.js",
+  "timeoutMin": 20
+}

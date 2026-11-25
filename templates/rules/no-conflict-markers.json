@@ -1,0 +1,30 @@
+{
+  "$schema": "../../node_modules/wololo/schema/rule.schema.json",
+  "id": "no-conflict-markers",
+  "kind": "forbid",
+  "severity": "error",
+  "files": [
+    "**/*"
+  ],
+  "exclude": [
+    "**/*.{png,jpg,jpeg,gif,ico,pdf,zip,gz,woff,woff2,lock}"
+  ],
+  "pattern": "^(?:<{7}|>{7}) ",
+  "flags": "m",
+  "why": "Half-resolved merges get committed when agents rebase unattended.",
+  "fix": "Resolve the conflict: keep the intended side(s), delete the markers, re-run verify.",
+  "examples": {
+    "bad": [
+      {
+        "path": "src/a.js",
+        "content": "<<<<<<< HEAD\nconst a = 1;\n=======\nconst a = 2;\n>>>>>>> main\n"
+      }
+    ],
+    "good": [
+      {
+        "path": "src/a.js",
+        "content": "const a = 1;\n"
+      }
+    ]
+  }
+}

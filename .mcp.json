@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "wololo": {
+      "command": "node",
+      "args": [
+        "bin/wololo.js",
+        "mcp"
+      ]
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "../../node_modules/wololo/schema/rule.schema.json",
+  "id": "no-skipped-tests",
+  "kind": "forbid",
+  "severity": "warn",
+  "files": [
+    "**/*.{test,spec}.{js,jsx,ts,tsx,mjs,cjs}",
+    "**/test_*.py",
+    "**/*_test.py"
+  ],
+  "pattern": "\\b(?:describe|it|test)\\.skip\\s*\\(|\\bx(?:it|describe)\\s*\\(|@pytest\\.mark\\.skip\\b",
+  "why": "Agents skip failing tests to make the suite green instead of fixing the code.",
+  "fix": "Fix the code or the test. If the test is truly obsolete, delete it and say why in the commit.",
+  "examples": {
+    "bad": [
+      {
+        "path": "src/a.test.ts",
+        "content": "it.skip('x', () => {});\n"
+      }
+    ],
+    "good": [
+      {
+        "path": "src/a.test.ts",
+        "content": "it('x', () => { expect(f()).toBe(1); });\n"
+      }
+    ]
+  }
+}

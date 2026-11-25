@@ -1,0 +1,16 @@
+{
+  "name": "wololo",
+  "owner": {
+    "name": "sizzlorox"
+  },
+  "metadata": {
+    "description": "Verification-first coding harness for Claude Code and other coding agents."
+  },
+  "plugins": [
+    {
+      "name": "wololo",
+      "source": "./",
+      "description": "Verification-first coding harness with rules, skills, MCP tools and hooks."
+    }
+  ]
+}

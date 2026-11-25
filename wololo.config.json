@@ -1,0 +1,46 @@
+{
+  "$schema": "./schema/wololo.config.schema.json",
+  "project": "wololo",
+  "bin": "node bin/wololo.js",
+  "harnesses": [
+    "claude",
+    "codex",
+    "copilot",
+    "cursor",
+    "gemini",
+    "windsurf",
+    "opencode",
+    "amp",
+    "aider",
+    "cline"
+  ],
+  "verify": {
+    "steps": [
+      {
+        "name": "typecheck",
+        "run": "npm run typecheck",
+        "fast": true
+      },
+      {
+        "name": "test",
+        "run": "npm run test"
+      }
+    ]
+  },
+  "gate": {
+    "minScore": 0.8
+  },
+  "autopilot": {
+    "agent": "claude",
+    "verifiers": 1,
+    "maxIterations": 5
+  },
+  "sources": [],
+  "ci": {
+    "provider": "github",
+    "setup": [
+      "uses: actions/setup-node@v4\nwith:\n  node-version: 22",
+      "run: npm ci"
+    ]
+  }
+}

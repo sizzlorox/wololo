@@ -1,0 +1,35 @@
+{
+  "$schema": "../../node_modules/wololo/schema/rule.schema.json",
+  "id": "god-files",
+  "kind": "max-lines",
+  "severity": "error",
+  "files": [
+    "**/*.{js,jsx,ts,tsx,mjs,cjs,py,go,rs,rb,java,kt,swift,cs,php}"
+  ],
+  "exclude": [
+    "**/*.generated.*",
+    "**/*.min.*",
+    "**/vendor/**",
+    "**/dist/**",
+    "**/build/**"
+  ],
+  "max": 400,
+  "why": "Agents grow existing files instead of creating new modules; god files are hard to change without breaking things.",
+  "fix": "Split by responsibility into small modules inside the feature folder. One concept per file.",
+  "examples": {
+    "bad": [
+      {
+        "path": "src/app.ts",
+        "content": "export const x = 1;\n",
+        "repeat": 401
+      }
+    ],
+    "good": [
+      {
+        "path": "src/small.ts",
+        "content": "export const x = 1;\n",
+        "repeat": 50
+      }
+    ]
+  }
+}

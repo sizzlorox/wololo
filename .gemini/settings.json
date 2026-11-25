@@ -1,0 +1,31 @@
+{
+  "context": {
+    "fileName": [
+      "GEMINI.md",
+      "AGENTS.md"
+    ]
+  },
+  "mcpServers": {
+    "wololo": {
+      "command": "node",
+      "args": [
+        "bin/wololo.js",
+        "mcp"
+      ]
+    }
+  },
+  "hooks": {
+    "AfterTool": [
+      {
+        "matcher": "write_file|replace|edit",
+        "hooks": [
+          {
+            "name": "wololo-check",
+            "type": "command",
+            "command": "node bin/wololo.js hook gemini post-edit"
+          }
+        ]
+      }
+    ]
+  }
+}

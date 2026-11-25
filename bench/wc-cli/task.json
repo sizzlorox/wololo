@@ -1,0 +1,5 @@
+{
+  "prompt": "bin/wc.js prints the number of words read from stdin. Add flags: --lines prints the number of lines instead (a trailing newline does not start a new line; empty input is 0 lines), --chars prints the number of characters (Unicode code points, not UTF-16 units). Unknown flags must print a usage message to stderr and exit with code 2. With no flag, behaviour is unchanged.",
+  "check": "node --test --test-timeout=5000 hidden/*.test.js",
+  "timeoutMin": 20
+}

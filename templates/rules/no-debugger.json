@@ -1,0 +1,27 @@
+{
+  "$schema": "../../node_modules/wololo/schema/rule.schema.json",
+  "id": "no-debugger",
+  "kind": "forbid",
+  "severity": "error",
+  "files": [
+    "**/*.{js,jsx,ts,tsx,mjs,cjs,py}"
+  ],
+  "pattern": "^\\s*(?:debugger;?|breakpoint\\(\\)|import pdb; ?pdb\\.set_trace\\(\\))\\s*$",
+  "flags": "m",
+  "why": "Leftover breakpoints hang headless runs and CI.",
+  "fix": "Delete the breakpoint. Verify with a test or a log you remove afterwards.",
+  "examples": {
+    "bad": [
+      {
+        "path": "src/a.js",
+        "content": "function f() {\n  debugger;\n}\n"
+      }
+    ],
+    "good": [
+      {
+        "path": "src/a.js",
+        "content": "function f() {\n  return 1;\n}\n"
+      }
+    ]
+  }
+}

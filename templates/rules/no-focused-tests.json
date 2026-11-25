@@ -1,0 +1,27 @@
+{
+  "$schema": "../../node_modules/wololo/schema/rule.schema.json",
+  "id": "no-focused-tests",
+  "kind": "forbid",
+  "severity": "error",
+  "files": [
+    "**/*.{test,spec}.{js,jsx,ts,tsx,mjs,cjs}",
+    "**/test/**/*.{js,mjs,ts}"
+  ],
+  "pattern": "\\b(?:describe|it|test)\\.only\\s*\\(|\\b(?:fdescribe|fit)\\s*\\(",
+  "why": "A focused test silently skips the rest of the suite, so verify goes green while proving nothing.",
+  "fix": "Remove .only / fit / fdescribe. Use your runner's CLI filter while iterating instead.",
+  "examples": {
+    "bad": [
+      {
+        "path": "src/a.test.ts",
+        "content": "it.only('x', () => {});\n"
+      }
+    ],
+    "good": [
+      {
+        "path": "src/a.test.ts",
+        "content": "it('x', () => { expect(f()).toBe(1); });\n"
+      }
+    ]
+  }
+}

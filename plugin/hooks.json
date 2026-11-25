@@ -1,0 +1,26 @@
+{
+  "description": "Run repo rules after edits and verify fast checks before Claude finishes.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/wololo.js\" hook claude post-edit"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/wololo.js\" hook claude stop"
+          }
+        ]
+      }
+    ]
+  }
+}

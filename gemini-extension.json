@@ -1,0 +1,12 @@
+{
+  "name": "wololo",
+  "version": "0.1.0",
+  "description": "Verification-first coding harness with constraints, skills, coordinators and MCP tools.",
+  "contextFileName": "AGENTS.md",
+  "mcpServers": {
+    "wololo": {
+      "command": "node",
+      "args": ["${extensionPath}/bin/wololo.js", "mcp"]
+    }
+  }
+}

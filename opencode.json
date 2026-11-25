@@ -1,0 +1,14 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "wololo": {
+      "type": "local",
+      "command": [
+        "node",
+        "bin/wololo.js",
+        "mcp"
+      ],
+      "enabled": true
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "wololo": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/bin/wololo.js", "mcp"]
+    }
+  }
+}

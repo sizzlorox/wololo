@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "wololo rubric",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["criteria"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "criteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "type"],
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "type": "string", "enum": ["verify", "check", "command", "metric", "judgment"] },
+          "weight": { "type": "number" },
+          "step": { "type": "string", "description": "verify: only this step." },
+          "run": { "type": "string", "description": "command/metric: shell command. metric reads the last number printed." },
+          "min": { "type": "number", "description": "metric: value scoring 0." },
+          "max": { "type": "number", "description": "metric: value scoring 1 (may be lower than min when lower is better)." },
+          "question": { "type": "string", "description": "judgment: what the judging agent must answer, 0..1." }
+        }
+      }
+    }
+  }
+}

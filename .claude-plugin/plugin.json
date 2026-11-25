@@ -1,0 +1,13 @@
+{
+  "name": "wololo",
+  "version": "0.1.0",
+  "description": "A verification-first coding harness: constraints, skills, coordinators, MCP tools and hooks.",
+  "author": { "name": "sizzlorox" },
+  "repository": "https://github.com/sizzlorox/wololo",
+  "license": "MIT",
+  "keywords": ["coding-harness", "verification", "skills", "mcp"],
+  "skills": "./templates/skills/",
+  "agents": ["./templates/agents/coordinator.md", "./templates/agents/verifier.md", "./templates/agents/gardener.md", "./templates/agents/reviewer.md"],
+  "hooks": "./plugin/hooks.json",
+  "mcpServers": "./plugin/mcp.json"
+}

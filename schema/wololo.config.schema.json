@@ -1,0 +1,96 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "wololo config",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "project": { "type": "string", "description": "Display name for this project." },
+    "bin": { "type": "string", "description": "How agents and hooks invoke wololo, e.g. \"npx --no-install wololo\"." },
+    "harnesses": {
+      "type": "array",
+      "description": "Agent harnesses to generate adapters for.",
+      "items": { "type": "string", "enum": ["claude", "codex", "copilot", "cursor", "gemini", "windsurf", "opencode", "amp", "aider", "cline", "omp"] }
+    },
+    "ignore": { "type": "array", "items": { "type": "string" }, "description": "Globs never scanned by check/garden." },
+    "verify": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["steps"],
+      "properties": {
+        "timeoutSec": { "type": "number" },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "run"],
+            "properties": {
+              "name": { "type": "string" },
+              "run": { "type": "string" },
+              "fast": { "type": "boolean", "description": "Cheap enough to run on every agent stop." },
+              "timeoutSec": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "minScore": { "type": "number" },
+        "requireJudgment": { "type": "boolean" }
+      }
+    },
+    "autopilot": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "agent": { "type": "string" },
+        "command": { "type": "array", "items": { "type": "string" }, "description": "Custom headless agent argv; \"{prompt}\" is replaced." },
+        "verifiers": { "type": "number" },
+        "maxIterations": { "type": "number" },
+        "models": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Model per harness for autopilot runs, e.g. {\"claude\": \"opus\", \"omp\": \"local-gpu/nemotron-super\"}. Unset: the harness's own default. Change it mid-run with m on the TUI's Autopilot tab; the next agent uses it." },
+        "workers": { "type": "integer", "minimum": 1, "maximum": 8, "description": "How many plan steps autopilot builds at once, each by its own agent in its own git worktree, merged back one at a time through the gate (default 1). Agents share one model server: on a local GPU more workers split its context and speed." },
+        "mergeCommand": { "type": "string" },
+        "contextWindow": { "type": "integer", "minimum": 1000, "description": "Agent context window in tokens. Sizes planned tasks and caps the output handed to agents." },
+        "stuckAfter": { "type": "integer", "minimum": 1, "description": "Stop when the same gate failure survives this many fix attempts (default 2)." },
+        "agentTimeoutMinutes": { "type": "number", "minimum": 0, "description": "Kill an agent run (and everything it spawned) after this many minutes, then let the gate decide what happens next (default 45; 0 = no limit)." },
+        "stallMinutes": { "type": "number", "minimum": 0, "description": "Kill an agent run early when it shows no progress (no output besides spinners and server retries, no file changes) for this many minutes (default 20; 0 = off)." },
+        "gapRounds": { "type": "integer", "minimum": 0, "description": "After a plan lands, how many times a reviewer checks the goal against the repo and plans what is missing (default 3; 0 = off)." },
+        "thinking": { "type": "string", "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max", "auto"], "description": "Reasoning level for headless agents that take one (omp --thinking). Default: low on a small contextWindow, else the agent's own default. Long thinking on a small local model fills the output cap and loops compacting."  }
+      }
+    },
+    "mcp": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tools": { "type": "array", "items": { "type": "string" }, "description": "Only expose these commands as MCP tools (e.g. [\"gate\", \"task note\"]). Saves context on small windows." }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "description": "Outer-loop context sources. Each command prints a JSON array of items.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "run"],
+        "properties": {
+          "name": { "type": "string" },
+          "run": { "type": "string" },
+          "kind": { "type": "string" },
+          "fields": { "type": "object" }
+        }
+      }
+    },
+    "ci": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "type": "string", "enum": ["github", "none"] },
+        "setup": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

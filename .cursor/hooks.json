@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "hooks": {
+    "afterFileEdit": [
+      {
+        "command": "node bin/wololo.js hook cursor post-edit"
+      }
+    ],
+    "stop": [
+      {
+        "command": "node bin/wololo.js hook cursor stop"
+      }
+    ]
+  }
+}

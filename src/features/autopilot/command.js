@@ -1,0 +1,96 @@
+import { onPath } from '../../core/exec.js';
+import { launch } from '../watch/actions.js';
+
+import { readTask } from '../board/store.js';
+import { checkMcpFiles } from '../doctor/mcp.js';
+import { runGate } from '../gate/command.js';
+import { agentArgv } from './argv.js';
+import { DEFAULT_STALL_MINUTES } from './agent.js';
+import { contextRules, windowLabel } from './budget.js';
+import { gateFailures, log, runLoop } from './loop.js';
+import { count, setStatus, startStatus } from './status.js';
+import { VERSION } from '../../core/version.js';
+import { plan } from './plan.js';
+import { runWorker } from './worker.js';
+import { buildGroup } from './review.js';
+import { builderPrompt, fixerPrompt, plannerPrompt, VERIFIER_FOCUS, verifierPrompt } from './prompts.js';
+
+export { agentArgv };
+
+/** @type {import('../../core/types.js').Command[]} */
+export const commands = [
+  {
+    name: 'autopilot',
+    summary: 'Build hands-off, then loop until it can land: fixer turns the gate green, verifiers fuzz it. --plan splits a big goal into small tasks for small context windows.',
+    mcp: false,
+    options: {
+      goal: { type: 'string', description: 'Feature to build first (a builder agent implements it, then the loop hardens it)' },
+      plan: { type: 'boolean', description: 'With --goal: a planner splits it into small board tasks, built one at a time by fresh agents' },
+      group: { type: 'string', description: 'Build (or resume) every open task in this board group, in order' },
+      task: { type: 'string', description: 'Board task id to build: claims it, notes progress, marks it done when landed or blocked on human if not' },
+      agent: { type: 'string', description: 'Harness to drive headlessly (claude, codex, copilot, cursor, gemini, opencode, amp, aider, omp; default autopilot.agent)' },
+      verifiers: { type: 'number', description: 'Verifier passes per green gate (tune to cost)' },
+      max: { type: 'number', description: 'Max iterations per task' },
+      merge: { type: 'boolean', description: 'Run autopilot.mergeCommand when landed' },
+      dryRun: { type: 'boolean', description: 'Show what would run without spawning agents' },
+    },
+    async run(input, ctx) {
+      const { config, root } = ctx;
+      const agent = input.agent ?? config.autopilot.agent;
+      const verifiers = Math.min(input.verifiers ?? config.autopilot.verifiers, VERIFIER_FOCUS.length);
+      const opts = { agent, focuses: VERIFIER_FOCUS.slice(0, verifiers), max: input.max ?? config.autopilot.maxIterations, merge: input.merge };
+      const modes = ['goal', 'task', 'group'].filter((m) => input[m]);
+      if (modes.length > 1) return { ok: false, summary: `use one of --goal, --task or --group, not ${modes.map((m) => `--${m}`).join(' and ')}`, exitCode: 2 };
+      if (input.plan && !input.goal) return { ok: false, summary: '--plan needs --goal', exitCode: 2 };
+      const task = input.task ? readTask(root, input.task) : undefined;
+      if (input.task && !task) return { ok: false, summary: `no task ${input.task}` };
+      const goal = task ? [task.title, task.body].filter(Boolean).join('\n\n') : input.goal;
+      const window = config.autopilot.contextWindow;
+
+      if (input.dryRun) {
+        const gate = await runGate(ctx);
+        const loop = gate.ok ? opts.focuses.map((f) => agentArgv(config, agent, verifierPrompt(config.bin, f))) : [agentArgv(config, agent, fixerPrompt(config.bin, gateFailures(gate)))];
+        const first = input.plan
+          ? [agentArgv(config, agent, plannerPrompt(config.bin, goal, '.wololo/state/plan.json', { window: windowLabel(window), maxTasks: 30 }))]
+          : goal
+            ? [agentArgv(config, agent, builderPrompt(config.bin, goal, { rules: contextRules(window) }))]
+            : [];
+        const plan = [...first, ...loop];
+        const head = input.plan ? 'planner, then a builder per task, a gap review against the goal, then ' : goal ? 'builder, then ' : '';
+        return { ok: true, summary: `dry run: ${head}gate ${gate.ok ? 'green → verifiers' : 'red → fixer'} using ${agent}`, details: plan.map((argv) => argv.map((a) => (a.includes(' ') ? JSON.stringify(a) : a)).join(' ')), data: { gate, plan } };
+      }
+
+      const bin = config.autopilot.command?.length ? undefined : agentArgv(config, agent, '')[0];
+      if (bin && !onPath(bin)) {
+        return { ok: false, summary: `autopilot agent "${agent}" runs \`${bin}\`, which was not found on PATH. Install it, pass --agent <harness>, or set autopilot.agent / autopilot.command in wololo.config.json`, exitCode: 2 };
+      }
+
+      // In a terminal: run in the background and open the dashboard, which can retry, skip and stop it.
+      if (process.stdout.isTTY && !process.env.WOLOLO_DETACHED) {
+        launch(root, process.argv.slice(2));
+        await new Promise((r) => setTimeout(r, 500)); // let the run write its status before the first frame
+        const { openTui } = await import('../tui/command.js');
+        await openTui(ctx, { tab: 'autopilot' });
+        return { ok: true, summary: '', stdout: '' };
+      }
+      startStatus(root, { goal, group: input.group, task: task && { id: task.id, title: task.title, started: new Date().toISOString() }, contextWindow: window, agentCli: agent, workers: config.autopilot.workers ?? 1, version: VERSION, stallMinutes: config.autopilot.stallMinutes ?? DEFAULT_STALL_MINUTES });
+      log(`watch it live: ${config.bin} watch`);
+      for (const problem of checkMcpFiles(ctx.root)) log(`warning: ${problem}`);
+      const r = await (async () => {
+        if (input.plan) {
+          const planned = await plan(ctx, agent, goal);
+          if (!planned.ok) return { ok: false, summary: `planning failed: ${planned.error}` };
+          setStatus(root, { group: planned.group });
+          return buildGroup(ctx, planned.group, opts);
+        }
+        if (input.group) return buildGroup(ctx, input.group, opts);
+        if (process.env.WOLOLO_WORKER && task) return runWorker(ctx, task, opts);
+        const single = await runLoop(ctx, { ...opts, goal, task });
+        count(root, single.ok ? 'landed' : 'stopped');
+        return single;
+      })();
+      setStatus(root, { state: r.ok ? 'landed' : 'stopped', summary: r.summary.split('\n')[0], agent: null });
+      return r;
+    },
+  },
+];

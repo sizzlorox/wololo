@@ -1,0 +1,5 @@
+{
+  "prompt": "Extend parseDuration in src/duration.js: support hours (h) and days (d) as well as seconds and minutes, allow combined units in descending order like \"1d2h30m\", and throw a RangeError for anything malformed (empty string, unknown units, missing numbers, units out of order or repeated). Keep returning milliseconds.",
+  "check": "node --test --test-timeout=5000 hidden/*.test.js",
+  "timeoutMin": 20
+}

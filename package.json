@@ -1,0 +1,45 @@
+{
+  "name": "wololo",
+  "version": "0.5.2",
+  "description": "A pluggable coding harness: verification loops, constraints, skills and coordinators for every frontier AI coding agent.",
+  "type": "module",
+  "bin": {
+    "wololo": "bin/wololo.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "templates",
+    "bench",
+    "schema",
+    "plugin",
+    ".claude-plugin",
+    "gemini-extension.json"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test --test-reporter=dot \"test/**/*.test.js\"",
+    "typecheck": "tsc -p tsconfig.json",
+    "verify": "node bin/wololo.js verify",
+    "gate": "node bin/wololo.js gate"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "harness",
+    "claude-code",
+    "codex",
+    "copilot",
+    "cursor",
+    "gemini",
+    "mcp",
+    "skills"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3"
+  }
+}

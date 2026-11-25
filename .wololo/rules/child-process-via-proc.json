@@ -1,0 +1,15 @@
+{
+  "$schema": "../../schema/rule.schema.json",
+  "id": "child-process-via-proc",
+  "kind": "forbid",
+  "severity": "error",
+  "files": ["src/**/*.js"],
+  "exclude": ["src/core/proc.js", "src/adapters/omp.js"],
+  "pattern": "from ['\"]node:child_process['\"]",
+  "why": "The TUI runs autopilot detached; on Windows a detached process has no console, so every console program it started without windowsHide (omp.exe, git, cargo) opened a new visible terminal window.",
+  "fix": "Import spawn / spawnSync from src/core/proc.js: same signatures, windowsHide on by default. (src/adapters/omp.js is exempt: its import is template text for omp's own hook.)",
+  "examples": {
+    "bad": [{ "path": "src/features/x/run.js", "content": "import { spawnSync } from 'node:child_process';\n" }],
+    "good": [{ "path": "src/features/x/run.js", "content": "import { spawnSync } from '../../core/proc.js';\n" }]
+  }
+}
