@@ -1,4 +1,5 @@
-import { spawn, spawnSync } from '../../core/proc.js';
+import { spawn } from '../../core/proc.js';
+import { git } from '../../core/git.js';
 import { existsSync, mkdirSync, openSync, symlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { CONFIG_FILE, recordEvent, statePath } from '../../core/state.js';
@@ -53,8 +54,6 @@ export function pickReady(tasks, now) {
   return picked;
 }
 
-/** @param {string} cwd @param {string[]} args */
-const git = (cwd, args) => spawnSync('git', args, { cwd, encoding: 'utf8' });
 
 /**
  * Files git names when it refuses to start a merge because they would be overwritten.

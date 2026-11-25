@@ -1,15 +1,10 @@
 import { age } from '../../../core/text.js';
+import { median } from '../../../core/stats.js';
 import { readStatus } from '../../autopilot/status.js';
 import { alive } from '../../watch/view.js';
 import { readRuns, summarize } from '../../autopilot/usage.js';
 import { bar, box, columns, pad } from '../../watch/widgets.js';
 import { listDetail, moveIn, num, usd } from '../layout.js';
-
-/** @param {number[]} xs */
-const med = (xs) => {
-  const s = [...xs].sort((a, b) => a - b);
-  return s.length ? s[Math.floor(s.length / 2)] : 0;
-};
 
 /** ▁▂▃▅▇ of each turn's prompt size: how the context grew over a run. @param {number[]} xs @param {number} w */
 export function spark(xs, w) {
@@ -84,7 +79,7 @@ export const usage = {
           ...(r.cost ? [`cost          ${usd(r.cost)}${r.saved ? ` (cache saved ${usd(r.saved)})` : ''}`] : []),
           `wololo prompt ${num(r.promptChars ?? 0)} chars`,
           '',
-          `turn size     min ${num(ctxs.length ? Math.min(...ctxs) : 0)} · median ${num(med(ctxs))} · max ${num(ctxs.length ? Math.max(...ctxs) : 0)}`,
+          `turn size     min ${num(ctxs.length ? Math.min(...ctxs) : 0)} · median ${num(median(ctxs))} · max ${num(ctxs.length ? Math.max(...ctxs) : 0)}`,
           c('36', spark(ctxs, 60)),
           c('2', 'context per turn'),
         ]

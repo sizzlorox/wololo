@@ -1,4 +1,4 @@
-import { spawnSync } from '../../core/proc.js';
+import { git } from '../../core/git.js';
 import { cpSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,8 +19,6 @@ const CLEAN_ENV = { NODE_TEST_CONTEXT: undefined };
 
 const TEST_FILE = /(^|\/)(tests?|__tests__|spec)\/|[._-](test|spec)\.[a-z]+$|(^|\/)test_[^/]+\.py$/;
 
-/** @param {string} cwd @param {string[]} args */
-const git = (cwd, args) => spawnSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
 
 /** @param {string} ws @param {string} message */
 function commitAll(ws, message) {

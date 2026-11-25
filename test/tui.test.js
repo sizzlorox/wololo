@@ -1,3 +1,4 @@
+// wololo-ignore-file no-secrets: fake tokens on purpose, to test the secret detector
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

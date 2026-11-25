@@ -1,3 +1,4 @@
+// wololo-ignore-file no-secrets: fake tokens on purpose, to test the secret detector
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';

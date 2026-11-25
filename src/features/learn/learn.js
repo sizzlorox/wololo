@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { median } from '../../core/stats.js';
 import { join } from 'node:path';
 import { ensureDir, readJson, writeJson } from '../../core/files.js';
 import { spawnSync } from '../../core/proc.js';
@@ -35,12 +36,6 @@ export function collectRuns(root) {
     })
     .filter((r) => ROLES.includes(r.role) && r.calls.length);
 }
-
-/** @param {number[]} xs */
-const median = (xs) => {
-  const s = [...xs].filter((x) => x > 0).sort((a, b) => a - b);
-  return s.length ? s[Math.floor(s.length / 2)] : 0;
-};
 
 /**
  * @param {import('./detect.js').Pattern} p
@@ -135,7 +130,7 @@ export async function learn(ctx, agent, log) {
   const p = detect(runs).find((x) => !known.has(shortHash(x.key)));
   if (!p) return;
   writeJson(seenFile, { handled: [...seen.handled, shortHash(p.key)] });
-  const baseline = median(runs.filter((r) => p.runs.includes(r.id)).map((r) => r.turns ?? 0));
+  const baseline = median(runs.filter((r) => p.runs.includes(r.id)).map((r) => r.turns ?? 0).filter((t) => t > 0));
   const what = `${p.calls.length} step(s) repeated in ${p.runs.length} runs across ${p.tasks.length} steps: ${p.calls.join(' → ')}`;
 
   if (mode === 'suggest') {

@@ -1,4 +1,4 @@
-import { spawnSync } from '../../core/proc.js';
+import { git, gitOut } from '../../core/git.js';
 import { sh } from '../../core/exec.js';
 import { recordEvent } from '../../core/state.js';
 import { shortHash, tail } from '../../core/text.js';
@@ -23,14 +23,14 @@ export const UNVERIFIABLE =
  * @param {string} base
  */
 const commitsSince = (root, base) =>
-  base ? (spawnSync('git', ['log', '--format=%s', `${base}..HEAD`], { cwd: root, encoding: 'utf8' }).stdout ?? '').split('\n').filter(Boolean).slice(0, 15) : [];
+  base ? (git(root, ['log', '--format=%s', `${base}..HEAD`]).stdout ?? '').split('\n').filter(Boolean).slice(0, 15) : [];
 
 /**
  * Uncommitted files (`git status --short`), so a fresh agent knows what was left without exploring.
  * @param {string} root
  */
 export const dirtyFiles = (root) =>
-  (spawnSync('git', ['status', '--short', '--untracked-files=all', '--', '.', ':(exclude).wololo'], { cwd: root, encoding: 'utf8' }).stdout ?? '').split('\n').filter(Boolean).slice(0, 30);
+  (git(root, ['status', '--short', '--untracked-files=all', '--', '.', ':(exclude).wololo']).stdout ?? '').split('\n').filter(Boolean).slice(0, 30);
 
 /** @param {string} msg */
 export const log = (msg) => {
@@ -44,9 +44,7 @@ export const log = (msg) => {
  * @param {string} root
  */
 function fingerprint(root) {
-  /** @param {string[]} args */
-  const git = (args) => spawnSync('git', args, { cwd: root, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 }).stdout ?? '';
-  return shortHash(git(['rev-parse', 'HEAD^{tree}']) + git(['status', '--porcelain']) + git(['diff', 'HEAD']));
+  return shortHash(gitOut(root, ['rev-parse', 'HEAD^{tree}']) + gitOut(root, ['status', '--porcelain']) + gitOut(root, ['diff', 'HEAD']));
 }
 
 /** Same failure modulo timings, counts and line numbers. @param {string} failures */
@@ -62,7 +60,7 @@ const DOCS = /(^|\/)docs\/|\.(md|mdx|txt|rst)$/i;
 function docsOnly(root, base) {
   if (!base) return false;
   /** @param {string[]} args */
-  const lines = (args) => (spawnSync('git', args, { cwd: root, encoding: 'utf8' }).stdout ?? '').split('\n').filter(Boolean);
+  const lines = (args) => (git(root, args).stdout ?? '').split('\n').filter(Boolean);
   const files = [...lines(['diff', '--name-only', base]), ...lines(['ls-files', '--others', '--exclude-standard'])];
   return files.length > 0 && files.every((f) => DOCS.test(f));
 }
@@ -133,7 +131,7 @@ export async function runLoop(ctx, opts) {
     return { ok: false, summary: `${reason}: a human (or a better environment) is needed`, data };
   };
 
-  const base = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).stdout?.trim() ?? '';
+  const base = git(root, ['rev-parse', 'HEAD']).stdout?.trim() ?? '';
   if (task) {
     const claimed = await board['task claim'].run({ id: task.id, agent: `autopilot:${opts.agent}` }, ctx);
     if (!claimed.ok) return claimed;
@@ -176,8 +174,8 @@ export async function runLoop(ctx, opts) {
     const left = dirtyFiles(root);
     if (left.length) {
       const title = (task?.title ?? opts.goal?.split('\n')[0] ?? 'autopilot').slice(0, 100);
-      spawnSync('git', ['add', '-A', '--', '.', ':(exclude).wololo/state'], { cwd: root });
-      const c = spawnSync('git', ['commit', '-q', '--no-verify', '-m', `${title} (autopilot: landed, gate green)`], { cwd: root, encoding: 'utf8' });
+      git(root, ['add', '-A', '--', '.', ':(exclude).wololo/state']);
+      const c = git(root, ['commit', '-q', '--no-verify', '-m', `${title} (autopilot: landed, gate green)`]);
       log(c.status === 0 ? `committed ${left.length} file(s) the agents left uncommitted` : `could not commit what the agents left: ${tail(c.stderr ?? '', 3)}`);
     }
     let merged = '';

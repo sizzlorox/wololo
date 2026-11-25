@@ -1,4 +1,4 @@
-import { spawnSync } from '../../core/proc.js';
+import { git } from '../../core/git.js';
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { truncate } from '../../core/text.js';
@@ -43,7 +43,7 @@ export function stepsFrom(text) {
  */
 export function dirtyWork(root) {
   const numstat = new Map(
-    (spawnSync('git', ['diff', '--numstat', 'HEAD', '--', '.', ':(exclude).wololo'], { cwd: root, encoding: 'utf8' }).stdout ?? '')
+    (git(root, ['diff', '--numstat', 'HEAD', '--', '.', ':(exclude).wololo']).stdout ?? '')
       .split('\n')
       .filter(Boolean)
       .map((l) => {

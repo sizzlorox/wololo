@@ -1,4 +1,4 @@
-import { spawnSync } from '../../core/proc.js';
+import { git } from '../../core/git.js';
 import { enqueue } from '../queue/store.js';
 import { computeTrust } from '../trust/compute.js';
 import { readReviews, sampled, writeReviews } from './store.js';
@@ -9,7 +9,7 @@ import { readReviews, sampled, writeReviews } from './store.js';
  */
 function commits(root, since) {
   const range = since ? [`${since}..HEAD`] : ['-n', '50', 'HEAD'];
-  const r = spawnSync('git', ['log', '--no-merges', '--format=%H%x1f%an%x1f%s%x1f%cI', ...range], { cwd: root, encoding: 'utf8' });
+  const r = git(root, ['log', '--no-merges', '--format=%H%x1f%an%x1f%s%x1f%cI', ...range]);
   if (r.status !== 0) return [];
   return r.stdout
     .split('\n')

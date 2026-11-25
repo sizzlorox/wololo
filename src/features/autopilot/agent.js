@@ -1,4 +1,4 @@
-import { spawnSync } from '../../core/proc.js';
+import { gitOut } from '../../core/git.js';
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { run } from '../../core/exec.js';
 import { ensureDir } from '../../core/files.js';
@@ -42,8 +42,6 @@ const HEARTBEAT_MS = Number(process.env.WOLOLO_HEARTBEAT_MS) || 5 * 60_000;
 /** Echo each activity line to the console as it happens (WOLOLO_QUIET=1 for heartbeats only). */
 const STREAM = !process.env.WOLOLO_QUIET;
 
-/** @param {string} root @param {string[]} args */
-const git = (root, args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' }).stdout?.trim() ?? '';
 
 /**
  * What the agent has actually done so far, from git: agents in headless mode mostly print a spinner.
@@ -51,8 +49,8 @@ const git = (root, args) => spawnSync('git', args, { cwd: root, encoding: 'utf8'
  * @param {string} base  HEAD when the agent started
  */
 export function progress(root, base) {
-  const dirty = git(root, ['status', '--porcelain']).split('\n').filter(Boolean).length;
-  const commits = base ? git(root, ['log', '--format=%s', `${base}..HEAD`]).split('\n').filter(Boolean) : [];
+  const dirty = gitOut(root, ['status', '--porcelain']).split('\n').filter(Boolean).length;
+  const commits = base ? gitOut(root, ['log', '--format=%s', `${base}..HEAD`]).split('\n').filter(Boolean) : [];
   return `${dirty} uncommitted file(s), ${commits.length ? `${commits.length} commit(s), last: "${commits[0].slice(0, 80)}"` : 'no commits yet'}`;
 }
 
@@ -91,7 +89,7 @@ export async function runAgent(ctx, argv, role, log, meta = {}) {
   let serverError = '';
   const started = Date.now();
   saveRun(ctx.root, usageRecord());
-  const base = git(ctx.root, ['rev-parse', 'HEAD']);
+  const base = gitOut(ctx.root, ['rev-parse', 'HEAD']);
   const stallMinutes = ctx.config.autopilot.stallMinutes ?? DEFAULT_STALL_MINUTES;
   const stallMs = stallMinutes * 60_000;
   const abort = new AbortController();
@@ -107,7 +105,7 @@ export async function runAgent(ctx, argv, role, log, meta = {}) {
   let circling = '';
   let lastProgress = started;
   /** HEAD plus the working tree: changes here are progress even when the agent prints nothing. */
-  const tree = () => `${git(ctx.root, ['rev-parse', 'HEAD'])}\n${git(ctx.root, ['status', '--porcelain'])}`;
+  const tree = () => `${gitOut(ctx.root, ['rev-parse', 'HEAD'])}\n${gitOut(ctx.root, ['status', '--porcelain'])}`;
   let lastTree = tree();
   const watchdog = stallMs > 0
     ? setInterval(() => {

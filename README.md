@@ -2,6 +2,8 @@
 
 A harness for AI coding agents: verification loops, rules enforced at edit time, a merge gate, a task board, and autopilot that builds whole projects, serially or with parallel agents. Run it all from one terminal UI.
 
+Built on [PRINCIPLES.md](PRINCIPLES.md), the bible for this repo.
+
 Works with Claude Code, Codex, Copilot, Cursor, Gemini CLI, Windsurf, opencode, Amp, Aider, Cline and oh-my-pi (`omp`), including local models. Node ≥ 20, git. No runtime dependencies.
 
 ## Install

@@ -1,4 +1,4 @@
-import { spawnSync } from '../../core/proc.js';
+import { git } from '../../core/git.js';
 import { join } from 'node:path';
 import { listFiles, readText } from '../../core/files.js';
 import { wololoPath } from '../../core/state.js';
@@ -57,7 +57,7 @@ export function gardenFindings(ctx) {
   const verifyApp = readText(wololoPath(root, 'skills', 'verify-app', 'SKILL.md'));
   if (verifyApp?.includes('TODO(wololo)')) out.push({ id: 'verify-app:todo', title: 'verify-app skill still has TODO(wololo) placeholders', body: 'Agents cannot see or drive the app until it is filled in.' });
   else if (verifyApp) {
-    const since = spawnSync('git', ['rev-list', '--count', 'HEAD', `^${lastTouch(root, '.wololo/skills/verify-app')}`], { cwd: root, encoding: 'utf8' }).stdout?.trim();
+    const since = git(root, ['rev-list', '--count', 'HEAD', `^${lastTouch(root, '.wololo/skills/verify-app')}`]).stdout?.trim();
     if (Number(since) > 50) out.push({ id: 'verify-app:stale', title: `verify-app skill untouched for ${since} commits`, body: 'Re-run it end to end and update what changed.' });
   }
   if (!config.verify.steps.length) out.push({ id: 'verify:none', title: 'no verify steps configured', body: 'Without verification you are the meat proxy.' });
@@ -73,7 +73,7 @@ export function gardenFindings(ctx) {
 
 /** @param {string} root @param {string} path */
 function lastTouch(root, path) {
-  return spawnSync('git', ['log', '-1', '--format=%H', '--', path], { cwd: root, encoding: 'utf8' }).stdout?.trim() || 'HEAD';
+  return git(root, ['log', '-1', '--format=%H', '--', path]).stdout?.trim() || 'HEAD';
 }
 
 /** @type {import('../../core/types.js').Command[]} */

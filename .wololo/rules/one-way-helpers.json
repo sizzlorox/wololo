@@ -1,0 +1,19 @@
+{
+  "$schema": "../../schema/rule.schema.json",
+  "id": "one-way-helpers",
+  "kind": "forbid",
+  "severity": "error",
+  "files": ["src/**/*.js"],
+  "exclude": ["src/core/git.js", "src/core/stats.js"],
+  "pattern": "spawnSync\\(\\s*['\"]git['\"]|^\\s*(const|let|function)\\s+median\\b",
+  "flags": "m",
+  "why": "Seven files each grew their own git helper and four their own median, each slightly different (trimmed or not, buffer size, even counts). One way to do each thing.",
+  "fix": "Import git / gitOut from src/core/git.js and median from src/core/stats.js. Missing something? Add it there, once.",
+  "examples": {
+    "bad": [
+      { "path": "src/features/x/a.js", "content": "const r = spawnSync('git', ['status'], { cwd });\n" },
+      { "path": "src/features/x/b.js", "content": "const median = (xs) => xs[0];\n" }
+    ],
+    "good": [{ "path": "src/features/x/a.js", "content": "import { git } from '../../core/git.js';\nconst r = git(cwd, ['status']);\n" }]
+  }
+}

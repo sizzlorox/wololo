@@ -1,4 +1,4 @@
-import { spawnSync } from './proc.js';
+import { git } from './git.js';
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { matchAny } from './glob.js';
@@ -108,10 +108,10 @@ export function ensureDir(dir) {
  * @param {string[]} ignore
  */
 export function listFiles(root, ignore) {
-  const git = spawnSync('git', ['ls-files', '-co', '--exclude-standard', '-z'], { cwd: root, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+  const listed = git(root, ['ls-files', '-co', '--exclude-standard', '-z']);
   const files =
-    git.status === 0
-      ? git.stdout.split('\0').filter(Boolean)
+    listed.status === 0
+      ? listed.stdout.split('\0').filter(Boolean)
       : walk(root, root);
   return files.filter((f) => !matchAny(f, ignore) && existsSync(join(root, f))).sort();
 }
@@ -144,7 +144,7 @@ export function walk(root, dir) {
  * @param {string} root
  */
 export function changedFiles(root) {
-  const r = spawnSync('git', ['status', '--porcelain', '-z', '--untracked-files=all'], { cwd: root, encoding: 'utf8' });
+  const r = git(root, ['status', '--porcelain', '-z', '--untracked-files=all']);
   if (r.status !== 0) return [];
   return r.stdout
     .split('\0')

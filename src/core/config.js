@@ -1,4 +1,4 @@
-import { spawnSync } from './proc.js';
+import { git } from './git.js';
 import { existsSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { readJson } from './files.js';
@@ -61,15 +61,15 @@ export function findRoot(cwd) {
     if (existsSync(join(dir, CONFIG_FILE))) return { root: dir, hasConfig: true };
     if (process.env.WOLOLO_CONFIG && dir === resolve(cwd)) {
       // a parallel worker's worktree: the main repo's config applies
-      const git = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8' });
-      if (git.status === 0) return { root: resolve(git.stdout.trim()), hasConfig: true };
+      const top = git(cwd, ['rev-parse', '--show-toplevel']);
+      if (top.status === 0) return { root: resolve(top.stdout.trim()), hasConfig: true };
     }
     const up = dirname(dir);
     if (up === dir) break;
     dir = up;
   }
-  const git = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8' });
-  return { root: git.status === 0 ? git.stdout.trim() : resolve(cwd), hasConfig: false };
+  const top = git(cwd, ['rev-parse', '--show-toplevel']);
+  return { root: top.status === 0 ? top.stdout.trim() : resolve(cwd), hasConfig: false };
 }
 
 /**

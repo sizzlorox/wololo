@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { median } from '../../core/stats.js';
 import { join } from 'node:path';
 import { writeText } from '../../core/files.js';
 import { readEvents, statePath } from '../../core/state.js';
@@ -59,14 +60,6 @@ export function meter() {
     },
   };
 }
-
-/** @param {number[]} xs */
-const median = (xs) => {
-  if (!xs.length) return 0;
-  const s = [...xs].sort((a, b) => a - b);
-  const m = Math.floor(s.length / 2);
-  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-};
 
 /**
  * @typedef {RunUsage & { type: 'agent', role: string, ts: string, promptChars: number }} AgentEvent

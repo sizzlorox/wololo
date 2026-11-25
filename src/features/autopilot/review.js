@@ -1,5 +1,5 @@
 import { existsSync, rmSync } from 'node:fs';
-import { spawnSync } from '../../core/proc.js';
+import { git } from '../../core/git.js';
 import { ensureDir, readJson } from '../../core/files.js';
 import { statePath } from '../../core/state.js';
 import { truncate } from '../../core/text.js';
@@ -23,7 +23,7 @@ const MARKER = 'TODO|FIXME|XXX|unimplemented!|todo!\\(|NotImplementedError|not i
  * @returns {string[]} `file:line: text`
  */
 export function unfinishedMarkers(root) {
-  const r = spawnSync('git', ['grep', '-n', '-I', '-E', MARKER, '--', '.', ':(exclude).wololo', ':(exclude)*.md'], { cwd: root, encoding: 'utf8' });
+  const r = git(root, ['grep', '-n', '-I', '-E', MARKER, '--', '.', ':(exclude).wololo', ':(exclude)*.md']);
   return (r.stdout ?? '')
     .split('\n')
     .filter(Boolean)

@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, rmSync } from 'node:fs';
+import { median } from '../../core/stats.js';
 import { dirname, join } from 'node:path';
 import { readJson, writeJson } from '../../core/files.js';
 import { overlaps, prefix } from '../autopilot/areas.js';
@@ -69,12 +70,6 @@ export function matches(item, at) {
   if (!files.length) return true;
   return (at.touches.length > 0 && overlaps(at.touches, files)) || files.some((f) => prefix(f) && at.text.replace(/\\/g, '/').includes(prefix(f)));
 }
-
-/** @param {number[]} xs */
-const median = (xs) => {
-  const s = [...xs].sort((a, b) => a - b);
-  return s.length ? s[Math.floor(s.length / 2)] : 0;
-};
 
 /**
  * Judge a trial from the agent runs since it was adopted. Kept when the runs it was handed to took

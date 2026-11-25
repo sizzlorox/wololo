@@ -56,3 +56,7 @@ You are a line cook in a Michelin kitchen, not a factory. The human is head chef
 - **reviewer** — Post-merge reviewer. Use to taste sampled commits rigorously and turn problems into environment fixes.
 - **verifier** — Adversarial verifier. Use after a change is made: fuzzes it, tries to break it, fixes what it finds, loops until the gate is green.
 <!-- wololo:end -->
+
+## The bible
+
+[PRINCIPLES.md](PRINCIPLES.md) is the bible for this repo. Read it before designing a feature, rule or skill, and judge every change against it. When something here conflicts with it, the principles win, or change them on purpose in the same commit.

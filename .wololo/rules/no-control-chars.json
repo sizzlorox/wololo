@@ -1,0 +1,14 @@
+{
+  "$schema": "../../schema/rule.schema.json",
+  "id": "no-control-chars",
+  "kind": "forbid",
+  "severity": "error",
+  "files": ["src/**/*.{js,mjs,cjs}", "test/**/*.{js,mjs,cjs}"],
+  "pattern": "[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]",
+  "why": "Code written through shell heredocs and scripts kept turning escape sequences like \\x1b into the raw bytes, which render invisibly, break diffs and change behaviour.",
+  "fix": "Write the escape as text ('\\x1b', '\\n') instead of the raw character. Edit the file with an editor tool, not a heredoc that interprets backslashes.",
+  "examples": {
+    "bad": [{ "path": "src/features/x/a.js", "content": "out.write('\u001b[2J');\n" }],
+    "good": [{ "path": "src/features/x/a.js", "content": "out.write('\\x1b[2J');\n" }]
+  }
+}
