@@ -50,8 +50,15 @@ const KEEP = 60;
  * @property {'thinking' | 'reply'} [liveOf]
  */
 
-/** @type {Map<string, Status>} */
+/**
+ * Each process's status, keyed by the status file it writes. Keyed by file, not by repo root: an agent
+ * run in a parallel worktree (a merger) has the worktree as its root but writes the main repo's file,
+ * and must update the run's status rather than replace it (that lost the plan, and with it resume).
+ * @type {Map<string, Status>}
+ */
 const live = new Map();
+/** @param {string} root */
+const slot = (root) => statePath(root, FILE);
 
 /**
  * @param {string} root
@@ -60,41 +67,45 @@ const live = new Map();
  */
 export const readStatus = (root, worker) => readJson(statePath(root, worker ? join('workers', `${worker}.json`) : FILE), null);
 
-/**
- * Merge into this process's status and write it out. Cheap enough to call on every activity line.
- * @param {string} root
- * @param {Partial<Status>} patch
- */
-export function setStatus(root, patch) {
-  const cur = live.get(root) ?? { pid: process.pid, started: new Date().toISOString(), state: 'running', activity: [] };
+/** @param {string} file @param {Partial<Status>} patch */
+function update(file, patch) {
+  const cur = live.get(file) ?? { pid: process.pid, started: new Date().toISOString(), state: 'running', activity: [] };
   const next = { ...cur, ...patch };
-  live.set(root, next);
+  live.set(file, next);
   try {
-    writeText(statePath(root, FILE), `${JSON.stringify(next, null, 2)}\n`);
+    writeText(file, `${JSON.stringify(next, null, 2)}\n`);
   } catch {
     // the status file is a display: a failed write must never stop the run (the next write catches up)
   }
 }
 
+/**
+ * Merge into this process's status and write it out. Cheap enough to call on every activity line.
+ * @param {string} root
+ * @param {Partial<Status>} patch
+ */
+export const setStatus = (root, patch) => update(slot(root), patch);
+
 /** Start a fresh status for a new run. @param {string} root @param {Partial<Status>} patch */
 export function startStatus(root, patch) {
-  live.delete(root);
+  live.delete(slot(root));
   setStatus(root, { ...patch, activity: [] });
 }
 
-/** @param {string} root @param {string} line */
-export function addActivity(root, line) {
-  const cur = live.get(root);
-  const activity = [...(cur?.activity ?? []), { at: new Date().toISOString(), line }].slice(-KEEP);
-  setStatus(root, { activity });
+/** @param {string} file @param {string} line */
+function activity(file, line) {
+  update(file, { activity: [...(live.get(file)?.activity ?? []), { at: new Date().toISOString(), line }].slice(-KEEP) });
 }
+
+/** @param {string} root @param {string} line */
+export const addActivity = (root, line) => activity(slot(root), line);
 
 /** An autopilot log line, shown in `watch` alongside agent activity. @param {string} line */
 export function noteEverywhere(line) {
   const first = line.split('\n')[0];
-  for (const root of live.keys()) {
-    addActivity(root, `» ${first}`);
-    if (!/still running/.test(first)) setStatus(root, { phase: first });
+  for (const file of live.keys()) {
+    activity(file, `» ${first}`);
+    if (!/still running/.test(first)) update(file, { phase: first });
   }
 }
 
@@ -105,7 +116,7 @@ export function noteEverywhere(line) {
  * @param {number} [by]
  */
 export function count(root, key, by = 1) {
-  const stats = { ...live.get(root)?.stats };
+  const stats = { ...live.get(slot(root))?.stats };
   stats[key] = (stats[key] ?? 0) + by;
   setStatus(root, { stats });
 }

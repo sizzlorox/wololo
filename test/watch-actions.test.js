@@ -75,3 +75,15 @@ test('details shows why a step is blocked and its notes, newest last, within the
   assert.doesNotMatch(out, /note 0\b/, 'old notes trimmed to fit');
   assert.ok(out.split('\n').length <= 20);
 });
+
+test('a status that lost its plan name still resumes the newest plan', async () => {
+  const { view } = await import('../src/features/watch/view.js');
+  const { setStatus } = await import('../src/features/autopilot/status.js');
+  setup();
+  const now = new Date().toISOString();
+  writeTask(repo, { id: 'p-01', title: 'Step', group: 'plan-z', body: '', status: 'todo', queue: [], notes: [], seq: 1, created: now, updated: now });
+  setStatus(repo, { pid: 999999, state: 'running' }); // a dead run whose status has no group, as an older merger left it
+  const v = view(repo, { width: 0, height: 0, color: false });
+  assert.equal(v.group, 'plan-z');
+  assert.match(keys(v).map((k) => `${k.key} ${k.label}`).join(' | '), /r resume/);
+});

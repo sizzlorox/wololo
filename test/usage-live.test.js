@@ -46,3 +46,21 @@ setInterval(() => {}, 1000);
   assert.doesNotMatch(out, /running now/, 'a dead run is not running');
   assert.match(out, /80% of prompt tokens/);
 });
+
+test('an agent run in a worktree (a merger) updates the run\'s status instead of replacing it', async () => {
+  const { readStatus } = await import('../src/features/autopilot/status.js');
+  const main = mkdtempSync(join(tmpdir(), 'wololo-main-'));
+  const worktree = mkdtempSync(join(tmpdir(), 'wololo-tree-'));
+  const prev = process.env.WOLOLO_STATE;
+  process.env.WOLOLO_STATE = statePath(main); // what runParallel sets: worktrees share the main repo's state
+  try {
+    setStatus(main, { group: 'plan-x', parallel: /** @type {any} */ ({ workers: 2, main: 'master', running: [], queue: [] }) });
+    setStatus(worktree, { agent: /** @type {any} */ ({ role: 'merger' }) });
+    const s = readStatus(main);
+    assert.equal(s?.group, 'plan-x', 'the plan name survives, so the run can be resumed');
+    assert.equal(s?.agent?.role, 'merger');
+  } finally {
+    if (prev === undefined) delete process.env.WOLOLO_STATE;
+    else process.env.WOLOLO_STATE = prev;
+  }
+});
