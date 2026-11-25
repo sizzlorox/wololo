@@ -66,7 +66,7 @@ Then use the TUI: run the gate on **Health**, add work on **Board**, press `n` o
 2. Fresh agents build each step: builder, then fixers until the gate is green, then verifiers.
 3. A gap reviewer adds whatever is still missing.
 
-With `autopilot.hillClimb` > 0, a step that passes also gets hill-climbed against `.wololo/rubric.json`: a judge scores it, an improver works on the weakest criterion, and the change stays only if the gate is green and the score went up.
+A step that passes also gets hill-climbed (`autopilot.hillClimb`, 1 round by default) against `.wololo/rubric.json`: a judge scores it, an improver works on the weakest criterion, and the change stays only if the gate is green and the score went up.
 
 After each step lands, a share of its commits is sampled for you to review (the Review tab), at the trust ladder's rate. Reviews never block the run.
 
@@ -106,7 +106,7 @@ The Transcript tab shows what is sent: prompts, tool results (including file con
 | `models` | – | Model per agent, e.g. `{"claude": "sonnet", "omp": "local-gpu/nemotron-super"}`. `m` changes it mid-run |
 | `workers` | 1 | Steps built at once |
 | `learn` | auto | Learned skills: `auto`, `suggest` or `off` |
-| `hillClimb` | 0 | Rubric hill-climb rounds per step (0 = off) |
+| `hillClimb` | 1 | Rubric hill-climb rounds per step (0 = off) |
 | `contextWindow` | – | Model context in tokens |
 | `maxIterations` | 5 | Fix/verify rounds per step |
 | `verifiers` | 1 | Verifier passes per green gate |

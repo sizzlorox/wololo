@@ -53,7 +53,7 @@ if (prompt.includes('You are the planner')) {
 /** @param {Record<string, any>} [autopilot] @param {Record<string, any>} [extra] */
 export function setup(autopilot = {}, extra = {}) {
   const config = JSON.parse(readFileSync(join(repo, 'wololo.config.json'), 'utf8'));
-  config.autopilot = { ...config.autopilot, command: [process.execPath, join(scratch, 'agent.cjs'), '{prompt}'], verifiers: 1, ...autopilot };
+  config.autopilot = { ...config.autopilot, command: [process.execPath, join(scratch, 'agent.cjs'), '{prompt}'], verifiers: 1, hillClimb: 0, ...autopilot };
   writeFileSync(join(repo, 'wololo.config.json'), `${JSON.stringify({ ...config, ...extra }, null, 2)}\n`);
   wololo(['sync']);
   git(['add', '-A']);

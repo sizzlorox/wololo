@@ -60,9 +60,16 @@ test('hill-climb undoes a change that breaks the gate', () => {
   assert.equal(git(['status', '--porcelain', '--untracked-files=no']).stdout.trim(), '', 'clean afterwards');
 });
 
-test('hillClimb 0 (the default) runs no judge or improver', () => {
+test('hill-climbing is on by default (1 round); hillClimb 0 turns it off', () => {
   writeFileSync(join(scratch, 'agent.cjs'), AGENT);
-  setup({ verifiers: 0, gapRounds: 0 });
+  setup({ verifiers: 0, gapRounds: 0, hillClimb: undefined }); // not set: the default applies
+  assert.equal(wololo(['autopilot', '--goal', 'Add a greet helper GOOD']).code, 0);
+  assert.equal(count('improver'), 1, 'one round by default');
+});
+
+test('hillClimb 0 runs no judge or improver', () => {
+  writeFileSync(join(scratch, 'agent.cjs'), AGENT);
+  setup({ verifiers: 0, gapRounds: 0, hillClimb: 0 });
   assert.equal(wololo(['autopilot', '--goal', 'Add a greet helper GOOD']).code, 0);
   assert.equal(count('judge') + count('improver'), 0);
 });
