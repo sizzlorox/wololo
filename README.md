@@ -43,7 +43,7 @@ Then use the TUI: run the gate on **Health**, add work on **Board**, press `n` o
 
 ## TUI
 
-`wololo` opens it. Runs continue in the background after `q`. Switch tabs with `1`–`9` or `tab`; `?` lists every key on the current tab.
+`wololo` opens it. Runs continue in the background after `q`. Switch tabs with `1`–`9`, `0` or `tab`; `?` lists every key on the current tab.
 
 | Tab | What |
 |---|---|
@@ -51,6 +51,7 @@ Then use the TUI: run the gate on **Health**, add work on **Board**, press `n` o
 | Transcript | Everything sent to and from the model per run, live, with the endpoint and secret warnings |
 | Board | Tasks: add, edit, move, block, release, delete, build |
 | Queue | Findings: add, resolve, turn into tasks, cluster |
+| Review | Commits autopilot sampled for you to taste, with diffs. `o` ok · `e` fix the environment · `v` revert. Verdicts move the trust ladder |
 | Learned | Skills wololo learned from repeated agent work, their trigger and trial result. `p` keep · `x` retire · `d` delete |
 | Health | gate, verify, check, score, doctor, garden, with drill-down |
 | Usage | Tokens per run and role, prompt size, cache hits, cost |
@@ -64,6 +65,10 @@ Then use the TUI: run the gate on **Health**, add work on **Board**, press `n` o
 1. A planner splits the goal into small steps.
 2. Fresh agents build each step: builder, then fixers until the gate is green, then verifiers.
 3. A gap reviewer adds whatever is still missing.
+
+With `autopilot.hillClimb` > 0, a step that passes also gets hill-climbed against `.wololo/rubric.json`: a judge scores it, an improver works on the weakest criterion, and the change stays only if the gate is green and the score went up.
+
+After each step lands, a share of its commits is sampled for you to review (the Review tab), at the trust ladder's rate. Reviews never block the run.
 
 It stops when stuck and blocks that step; press `r` to retry or `s` to skip. Resume with `r` after any stop or crash.
 
@@ -101,6 +106,7 @@ The Transcript tab shows what is sent: prompts, tool results (including file con
 | `models` | – | Model per agent, e.g. `{"claude": "sonnet", "omp": "local-gpu/nemotron-super"}`. `m` changes it mid-run |
 | `workers` | 1 | Steps built at once |
 | `learn` | auto | Learned skills: `auto`, `suggest` or `off` |
+| `hillClimb` | 0 | Rubric hill-climb rounds per step (0 = off) |
 | `contextWindow` | – | Model context in tokens |
 | `maxIterations` | 5 | Fix/verify rounds per step |
 | `verifiers` | 1 | Verifier passes per green gate |

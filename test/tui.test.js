@@ -63,7 +63,7 @@ test('the TUI manages wololo end to end: board, queue, usage, config, health, co
 
   // Board: list + details, every tab in the bar
   await t.until(/Day night cycle body/);
-  for (const tab of ['Autopilot', 'Transcript', 'Board', 'Queue', 'Learned', 'Health', 'Usage', 'Config', 'Commands']) assert.match(t.screen(), new RegExp(tab));
+  for (const tab of ['Autopilot', 'Transcript', 'Board', 'Queue', 'Review', 'Learned', 'Health', 'Usage', 'Config', 'Commands']) assert.match(t.screen(), new RegExp(tab));
   assert.match(t.screen(), /blocked on human/);
   assert.match(t.screen(), /did not converge/, 'the details pane shows the notes');
 
@@ -94,7 +94,7 @@ test('the TUI manages wololo end to end: board, queue, usage, config, health, co
   assert.equal(readQueue(repo)[0].status, 'done');
 
   // Usage: totals, cache, saved, roles
-  t.type('7');
+  t.type('8');
   await t.until(/cache hits/);
   assert.match(t.screen(), /90% of prompt tokens/);
   assert.match(t.screen(), /median turn\s+7\.0k/);
@@ -102,7 +102,7 @@ test('the TUI manages wololo end to end: board, queue, usage, config, health, co
   assert.match(t.screen(), /builder\s+1 runs/);
 
   // Config: edit a setting (validated), then try an invalid value
-  t.type('8');
+  t.type('9');
   await t.until(/Settings/);
   const rows = flatten(loadConfig(repo)).filter(([k]) => k !== 'root').map(([k]) => k);
   t.type('\x1b[B'.repeat(rows.indexOf('autopilot.maxIterations')));
@@ -119,13 +119,13 @@ test('the TUI manages wololo end to end: board, queue, usage, config, health, co
   assert.equal(JSON.parse(readFileSync(join(repo, 'wololo.config.json'), 'utf8')).autopilot.maxIterations, 9, 'an invalid value never reaches the file');
 
   // Health: run check in a child, read its parts
-  t.type('6');
+  t.type('7');
   await t.until(/no check run yet/);
   t.type('c');
   await t.until(/wololo check: check (passed|failed)/);
 
   // Commands: filter, fill the form, read the result
-  t.type('9');
+  t.type('0');
   await t.until(/Usage/);
   t.type('/');
   await t.until(/Filter commands/);
@@ -227,6 +227,35 @@ test('m on the Autopilot tab picks the agent and its model; saved per harness in
   t.type('\t\x7f\x7f\x7f\x7f\x7f\x7f\r');
   await t.until(/autopilot\.models\.claude reset to default/);
   assert.equal(JSON.parse(readFileSync(join(repo, 'wololo.config.json'), 'utf8')).autopilot.models, undefined, 'clearing it removes the key');
+  t.type('q');
+  await done;
+});
+
+test('review: autopilot samples landed commits; the Review tab shows the diff and records verdicts that feed the queue and trust', async () => {
+  const { readReviews } = await import('../src/features/review/store.js');
+  setup({ verifiers: 0, gapRounds: 0 });
+  const r = wololo(['autopilot', '--goal', 'Add a greet helper']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.err, /sampled \d+ commit\(s\) to review/);
+  const pending = readReviews(repo).items.filter((i) => i.status === 'pending');
+  assert.ok(pending.length >= 1, 'trust L0 samples every commit');
+
+  const t = term(150, 50);
+  const ctx = /** @type {any} */ ({ root: repo, cwd: repo, config: loadConfig(repo), hasConfig: true, env: process.env, readStdin: async () => '' });
+  const done = openTui(ctx, { tab: 'review', io: /** @type {any} */ (t), interval: 0.1, entry: BIN });
+  await t.until(/trust L0 · sampling 100% of commits · \d+ waiting/);
+  assert.match(t.screen(), /diff --git|\+\+\+ b\//, 'the selected commit\'s diff is shown');
+  t.type('o');
+  await t.until(/→ ok/);
+  if (readReviews(repo).items.some((i) => i.status === 'pending')) {
+    t.type('e');
+    await t.until(/What was wrong in/);
+    t.type('helper has no test for empty names\r');
+    await t.until(/→ fix-env/);
+    assert.match(wololo(['queue', 'list', '--kind', 'mistake']).out, /helper has no test for empty names/, 'a fix-env verdict becomes a mistake to fix in the environment');
+  }
+  assert.ok(readReviews(repo).items.some((i) => i.status === 'ok'));
+  assert.match(wololo(['trust']).out, /\d+ reviews/);
   t.type('q');
   await done;
 });

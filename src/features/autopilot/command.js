@@ -12,6 +12,7 @@ import { count, setStatus, startStatus } from './status.js';
 import { VERSION } from '../../core/version.js';
 import { plan } from './plan.js';
 import { runWorker } from './worker.js';
+import { tasteSample } from './taste.js';
 import { buildGroup } from './review.js';
 import { builderPrompt, fixerPrompt, plannerPrompt, VERIFIER_FOCUS, verifierPrompt } from './prompts.js';
 
@@ -87,6 +88,7 @@ export const commands = [
         if (process.env.WOLOLO_WORKER && task) return runWorker(ctx, task, opts);
         const single = await runLoop(ctx, { ...opts, goal, task });
         count(root, single.ok ? 'landed' : 'stopped');
+        if (single.ok) tasteSample(root, log);
         return single;
       })();
       setStatus(root, { state: r.ok ? 'landed' : 'stopped', summary: r.summary.split('\n')[0], agent: null });

@@ -20,6 +20,27 @@ function commits(root, since) {
     });
 }
 
+/**
+ * Put new commits up for tasting at the trust ladder's rate (never zero). Autopilot calls this after
+ * every step lands, so review keeps up with the work without blocking it.
+ * @param {string} root
+ * @param {{ rate?: number, since?: string }} [opts]
+ */
+export function sampleCommits(root, opts = {}) {
+  const state = readReviews(root);
+  const rate = Math.max(0.05, opts.rate ?? computeTrust(root).sampleRate);
+  const list = commits(root, opts.since ?? state.cursor);
+  const known = new Set(state.items.map((i) => i.sha));
+  const fresh = list.filter((c) => !known.has(c.sha));
+  let picked = fresh.filter((c) => sampled(c.sha, rate));
+  if (!picked.length && fresh.length) picked = [fresh.reduce((a, b) => (parseInt(a.sha.slice(0, 8), 16) <= parseInt(b.sha.slice(0, 8), 16) ? a : b))];
+  const now = new Date().toISOString();
+  state.items.push(...picked.map((c) => ({ ...c, status: /** @type {const} */ ('pending'), sampledAt: now })));
+  if (list.length) state.cursor = list[0].sha;
+  writeReviews(root, state);
+  return { picked, fresh: fresh.length, rate };
+}
+
 /** @type {import('../../core/types.js').Command[]} */
 export const commands = [
   {
@@ -30,22 +51,12 @@ export const commands = [
       rate: { type: 'number', description: 'Sampling rate 0..1 (default from `wololo trust`)' },
     },
     async run(input, ctx) {
-      const state = readReviews(ctx.root);
-      const rate = Math.max(0.05, input.rate ?? computeTrust(ctx.root).sampleRate);
-      const list = commits(ctx.root, input.since ?? state.cursor);
-      const known = new Set(state.items.map((i) => i.sha));
-      const fresh = list.filter((c) => !known.has(c.sha));
-      let picked = fresh.filter((c) => sampled(c.sha, rate));
-      if (!picked.length && fresh.length) picked = [fresh.reduce((a, b) => (parseInt(a.sha.slice(0, 8), 16) <= parseInt(b.sha.slice(0, 8), 16) ? a : b))];
-      const now = new Date().toISOString();
-      state.items.push(...picked.map((c) => ({ ...c, status: /** @type {const} */ ('pending'), sampledAt: now })));
-      if (list.length) state.cursor = list[0].sha;
-      writeReviews(ctx.root, state);
+      const r = sampleCommits(ctx.root, { rate: input.rate, since: input.since });
       return {
         ok: true,
-        summary: `sampled ${picked.length} of ${fresh.length} new commit(s) at ${Math.round(rate * 100)}%`,
-        details: picked.map((c) => `${c.sha.slice(0, 10)} ${c.author}: ${c.subject}  →  git show ${c.sha.slice(0, 10)}`),
-        data: picked,
+        summary: `sampled ${r.picked.length} of ${r.fresh} new commit(s) at ${Math.round(r.rate * 100)}%`,
+        details: r.picked.map((c) => `${c.sha.slice(0, 10)} ${c.author}: ${c.subject}  →  git show ${c.sha.slice(0, 10)}`),
+        data: r.picked,
       };
     },
   },

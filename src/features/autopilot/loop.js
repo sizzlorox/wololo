@@ -11,6 +11,7 @@ import { refreshConfig } from './adopt.js';
 import { CONTEXT_LOOP, OUTPUT_CAP, OUTPUT_CAP_FIX, runAgent } from './agent.js';
 import { agentArgv } from './argv.js';
 import { learnedFor } from '../learn/store.js';
+import { hillClimb } from './climb.js';
 
 const board = Object.fromEntries(boardCommands.map((c) => [c.name, c]));
 
@@ -223,6 +224,8 @@ export async function runLoop(ctx, opts) {
       findings++;
     }
     if (changed) continue;
+    // works and nothing more to fix: hill-climb it against the rubric before it lands
+    if (opts.goal) await hillClimb(ctx, { goal: opts.goal, base, rounds: config.autopilot.hillClimb ?? 0, title: (task?.title ?? opts.goal.split('\n')[0]).slice(0, 100), spawn: spawnAgent, log });
     return land(i);
   }
   // Verifiers past --max are still polishing, not blocking: the gate is the merge bar, so a green gate lands.

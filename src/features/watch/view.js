@@ -2,6 +2,7 @@ import { progress } from '../autopilot/agent.js';
 import { readStatus } from '../autopilot/status.js';
 import { readTasks } from '../board/store.js';
 import { messages } from '../board/inbox.js';
+import { readReviews } from '../review/store.js';
 
 /** Is the process still there? @param {number} pid */
 export function alive(pid) {
@@ -32,5 +33,5 @@ export function view(root, screen, ui = {}) {
   // parallel run: each worker's own status, and what the agents told each other
   const workers = running ? (status?.parallel?.running ?? []).map((w) => ({ ...w, status: readStatus(root, w.id) })) : [];
   const inbox = group ? messages(root, group).slice(-30) : [];
-  return { status, tasks, alive: running, git, now: Date.now(), groups, group: ui.group ?? (status?.group ? undefined : group), selected: ui.selected, workers, inbox, ...screen };
+  return { status, tasks, alive: running, git, now: Date.now(), groups, group: ui.group ?? (status?.group ? undefined : group), toReview: readReviews(root).items.filter((i) => i.status === 'pending').length, selected: ui.selected, workers, inbox, ...screen };
 }

@@ -153,7 +153,7 @@ export async function runApp(ctx, opts) {
       data = null;
       lines = [c('31', ` ${screen.title} failed to load: ${/** @type {Error} */ (e).message}`)];
     }
-    const tabs = screens.map((s, i) => (i === active ? c('7', ` ${i + 1} ${s.title} `) : c('2', ` ${i + 1} ${s.title} `))).join('');
+    const tabs = screens.map((s, i) => (i === active ? c('7', ` ${(i + 1) % 10} ${s.title} `) : c('2', ` ${(i + 1) % 10} ${s.title} `))).join('');
     const head = `${c('1', ' wololo ')} ${tabs}`;
     let body = lines.slice(0, h - 3);
     while (body.length < h - 3) body.push('');
@@ -174,7 +174,7 @@ export async function runApp(ctx, opts) {
     } else if (confirming) {
       body = overlay(body, box('Confirm', [confirming.text, '', `${c('7', ' y ')} yes   ${c('7', ' n ')} no`], pw, c), w);
     } else if (help) {
-      const keys = [...(data ? screen.keys(data, ui) : []), ...GLOBAL.slice(1), { key: '1-9', label: 'jump to tab' }];
+      const keys = [...(data ? screen.keys(data, ui) : []), ...GLOBAL.slice(1), { key: '1-9, 0', label: 'jump to tab' }];
       body = overlay(body, box(`Help · ${screen.title}`, [...keys.map((k) => `${pad(k.key, 10)} ${k.label}`), '', c('2', 'esc close')], Math.min(pw, 60), c), w);
     }
     const status = busy ? c('33', ` ⟳ ${busy}…`) : message ? ` ${message}` : '';
@@ -217,7 +217,7 @@ export async function runApp(ctx, opts) {
     if (key === '?') help = true;
     else if (key === 'tab') active = (active + 1) % screens.length;
     else if (key === 'backtab') active = (active + screens.length - 1) % screens.length;
-    else if (/^[1-9]$/.test(key) && Number(key) <= screens.length) active = Number(key) - 1;
+    else if (/^[0-9]$/.test(key) && (Number(key) || 10) <= screens.length) active = (Number(key) || 10) - 1;
     else {
       const screen = screens[active];
       const ui = uis[screen.id];

@@ -19,6 +19,7 @@ import { overlaps } from './areas.js';
 export { overlaps };
 import { annotate } from './annotate.js';
 import { learn } from '../learn/learn.js';
+import { tasteSample } from './taste.js';
 import { count, readStatus, setStatus } from './status.js';
 
 const board = Object.fromEntries(boardCommands.map((c) => [c.name, c]));
@@ -297,7 +298,10 @@ export async function runParallel(ctx, group, opts) {
       delete mergeState[id];
       const t = readTask(root, id);
       details.push(`${t?.title ?? id}: ${ok ? 'merged' : 'could not merge'}`);
-      if (ok) await learn(ctx, opts.agent, log);
+      if (ok) {
+        await learn(ctx, opts.agent, log);
+        tasteSample(root, log);
+      }
       publish();
       continue;
     }

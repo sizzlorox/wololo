@@ -18,6 +18,7 @@ import { bar, box, columns, fit, pad, painter, plural, width } from './widgets.j
  * @property {string[]} [groups]    every plan on the board
  * @property {{ id: string, title: string, started: string, dir: string, status: import('../autopilot/status.js').Status | null }[]} [workers]  parallel run: one per step building now
  * @property {import('../board/inbox.js').Message[]} [inbox]  what the agents told each other
+ * @property {number} [toReview]  sampled commits waiting to be tasted
  */
 
 /** @param {number} ms */
@@ -49,7 +50,7 @@ export function render(v) {
   const stats = s.stats ?? {};
 
   const badge = dead ? c('31', '✗ not running') : s.state === 'running' ? c('33', '● running') : s.state === 'landed' ? c('32', '✓ landed') : c('31', `✗ ${s.state}`);
-  const facts = [s.agentCli, s.model && `model ${s.model}`, s.workers !== undefined && (s.workers > 1 ? `parallel ×${s.workers}` : 'serial (autopilot.workers = 1)'), s.version && `v${s.version}`, s.contextWindow && `${k(s.contextWindow)} ctx`, `pid ${s.pid}`, `up ${duration(v.now - Date.parse(s.started))}`].filter(Boolean);
+  const facts = [s.agentCli, s.model && `model ${s.model}`, s.workers !== undefined && (s.workers > 1 ? `parallel ×${s.workers}` : 'serial (autopilot.workers = 1)'), s.version && `v${s.version}`, s.contextWindow && `${k(s.contextWindow)} ctx`, `pid ${s.pid}`, `up ${duration(v.now - Date.parse(s.started))}`, v.toReview ? c('33', `${v.toReview} to review`) : ''].filter(Boolean);
   const left = ` ${c('1', 'WOLOLO AUTOPILOT')}  ${badge}  ${facts.join('  ')}`;
   const right = 'q quit ';
   const gap = v.width - width(left) - right.length;
