@@ -1,4 +1,5 @@
 import { existsSync, rmSync } from 'node:fs';
+import { listRepos, repoDir } from '../../core/repos.js';
 import { git } from '../../core/git.js';
 import { ensureDir, readJson } from '../../core/files.js';
 import { statePath } from '../../core/state.js';
@@ -23,10 +24,13 @@ const MARKER = 'TODO|FIXME|XXX|unimplemented!|todo!\\(|NotImplementedError|not i
  * @returns {string[]} `file:line: text`
  */
 export function unfinishedMarkers(root) {
-  const r = git(root, ['grep', '-n', '-I', '-E', MARKER, '--', '.', ':(exclude).wololo', ':(exclude)*.md']);
-  return (r.stdout ?? '')
-    .split('\n')
-    .filter(Boolean)
+  return listRepos(root)
+    .flatMap((repo) =>
+      (git(repoDir(root, repo), ['grep', '-n', '-I', '-E', MARKER, '--', '.', ':(exclude).wololo', ':(exclude)*.md']).stdout ?? '')
+        .split('\n')
+        .filter(Boolean)
+        .map((l) => (repo === '.' ? l : `${repo}/${l}`)),
+    )
     .slice(0, MAX_MARKERS)
     .map((l) => truncate(l.replace(/\s+/g, ' ').trim(), 160));
 }

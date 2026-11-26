@@ -1,4 +1,5 @@
 import { git } from './git.js';
+import { listRepos, repoDir } from './repos.js';
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { matchAny } from './glob.js';
@@ -108,11 +109,13 @@ export function ensureDir(dir) {
  * @param {string[]} ignore
  */
 export function listFiles(root, ignore) {
-  const listed = git(root, ['ls-files', '-co', '--exclude-standard', '-z']);
-  const files =
-    listed.status === 0
-      ? listed.stdout.split('\0').filter(Boolean)
-      : walk(root, root);
+  const repos = listRepos(root);
+  const files = repos.length
+    ? repos.flatMap((r) => {
+        const listed = git(repoDir(root, r), ['ls-files', '-co', '--exclude-standard', '-z']);
+        return listed.status === 0 ? listed.stdout.split('\0').filter(Boolean).map((f) => (r === '.' ? f : `${r}/${f}`)) : [];
+      })
+    : walk(root, root);
   return files.filter((f) => !matchAny(f, ignore) && existsSync(join(root, f))).sort();
 }
 

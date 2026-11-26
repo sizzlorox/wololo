@@ -1,9 +1,10 @@
-import { git, gitOut } from '../../core/git.js';
+import { changedSince, commitAll, commitsSince as since, dirty, heads, snapshot } from '../../core/repos.js';
 import { sh } from '../../core/exec.js';
 import { recordEvent } from '../../core/state.js';
 import { shortHash, tail } from '../../core/text.js';
 import { commands as boardCommands } from '../board/command.js';
 import { runGate } from '../gate/command.js';
+import { allSteps } from '../verify/command.js';
 import { clip, contextRules, failureBudget, overflowHint } from './budget.js';
 import { count, noteEverywhere, setStatus } from './status.js';
 import { builderPrompt, fixerPrompt, verifierPrompt } from './prompts.js';
@@ -24,15 +25,13 @@ export const UNVERIFIABLE =
  * @param {string} root
  * @param {string} base
  */
-const commitsSince = (root, base) =>
-  base ? (git(root, ['log', '--format=%s', `${base}..HEAD`]).stdout ?? '').split('\n').filter(Boolean).slice(0, 15) : [];
+const commitsSince = (root, base) => (base ? since(root, base).slice(0, 15) : []);
 
 /**
  * Uncommitted files (`git status --short`), so a fresh agent knows what was left without exploring.
  * @param {string} root
  */
-export const dirtyFiles = (root) =>
-  (git(root, ['status', '--short', '--untracked-files=all', '--', '.', ':(exclude).wololo']).stdout ?? '').split('\n').filter(Boolean).slice(0, 30);
+export const dirtyFiles = (root) => dirty(root).slice(0, 30);
 
 /** @param {string} msg */
 export const log = (msg) => {
@@ -45,9 +44,7 @@ export const log = (msg) => {
  * earlier state hash the same, which is how verifier ping-pong is caught.
  * @param {string} root
  */
-function fingerprint(root) {
-  return shortHash(gitOut(root, ['rev-parse', 'HEAD^{tree}']) + gitOut(root, ['status', '--porcelain']) + gitOut(root, ['diff', 'HEAD']));
-}
+const fingerprint = snapshot;
 
 /** Same failure modulo timings, counts and line numbers. @param {string} failures */
 const failureKey = (failures) => shortHash(failures.replace(/\d+(\.\d+)?/g, 'N'));
@@ -61,9 +58,7 @@ const DOCS = /(^|\/)docs\/|\.(md|mdx|txt|rst)$/i;
  */
 function docsOnly(root, base) {
   if (!base) return false;
-  /** @param {string[]} args */
-  const lines = (args) => (git(root, args).stdout ?? '').split('\n').filter(Boolean);
-  const files = [...lines(['diff', '--name-only', base]), ...lines(['ls-files', '--others', '--exclude-standard'])];
+  const files = changedSince(root, base);
   return files.length > 0 && files.every((f) => DOCS.test(f));
 }
 
@@ -140,7 +135,7 @@ export async function runLoop(ctx, opts) {
     return { ok: false, summary: `${reason}: a human (or a better environment) is needed`, data };
   };
 
-  const base = git(root, ['rev-parse', 'HEAD']).stdout?.trim() ?? '';
+  const base = heads(root);
   if (task) {
     const claimed = await board['task claim'].run({ id: task.id, agent: `autopilot:${opts.agent}` }, ctx);
     if (!claimed.ok) return claimed;
@@ -186,9 +181,8 @@ export async function runLoop(ctx, opts) {
     if (guard) return fail(guard, { iterations: i, findings });
     if (left.length) {
       const title = (task?.title ?? opts.goal?.split('\n')[0] ?? 'autopilot').slice(0, 100);
-      git(root, ['add', '-A', '--', '.', ':(exclude).wololo/state']);
-      const c = git(root, ['commit', '-q', '--no-verify', '-m', `${title} (autopilot: landed, gate green)`]);
-      log(c.status === 0 ? `committed ${left.length} file(s) the agents left uncommitted` : `could not commit what the agents left: ${tail(c.stderr ?? '', 3)}`);
+      const done = commitAll(root, `${title} (autopilot: landed, gate green)`);
+      log(done.length ? `committed ${left.length} file(s) the agents left uncommitted${done[0] === '.' ? '' : ` (${done.join(', ')})`}` : 'could not commit what the agents left');
     }
     let merged = '';
     if (opts.merge) {
@@ -208,7 +202,7 @@ export async function runLoop(ctx, opts) {
     setStatus(root, { gate: gate.ok ? 'green' : `red: ${redSummary(gate)}`, gateAt: new Date().toISOString() });
     count(root, gate.ok ? 'gate green' : 'gate red');
     if (!gate.ok) {
-      if (!config.verify.steps.length) return fail(UNVERIFIABLE, { iterations: i, findings });
+      if (!allSteps(ctx).length) return fail(UNVERIFIABLE, { iterations: i, findings });
       const failures = gateFailures(gate);
       const key = failureKey(failures);
       const tried = fixes.get(key) ?? 0;

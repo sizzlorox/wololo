@@ -69,3 +69,30 @@ test('sync in a parallel worktree uses that checkout\'s learned skills, not the 
     else process.env.WOLOLO_CONFIG = prev;
   }
 });
+
+test('workspace: a learned skill about one repo is that repo\'s (stored and committed there); one across repos is the workspace\'s', async () => {
+  const { mkdirSync, mkdtempSync, existsSync, readFileSync } = await import('node:fs');
+  const { spawnSync } = await import('node:child_process');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { learnedFor, listLearned, removeLearned, saveLearned } = await import('../src/features/learn/store.js');
+  const ws = mkdtempSync(join(tmpdir(), 'wololo-learn-ws-'));
+  for (const r of ['frontend', 'backend']) {
+    mkdirSync(join(ws, r));
+    spawnSync('git', ['init', '-q'], { cwd: join(ws, r) });
+  }
+  saveLearned(ws, /** @type {any} */ (item({ id: 'fe', trigger: { roles: ['builder'], files: ['frontend/src/ui/'] } })));
+  saveLearned(ws, /** @type {any} */ (item({ id: 'both', trigger: { roles: ['builder'], files: ['frontend/src/api.ts', 'backend/routes/'] } })));
+  const stored = JSON.parse(readFileSync(join(ws, 'frontend', '.wololo', 'learned', 'fe', 'learned.json'), 'utf8'));
+  assert.deepEqual(stored.trigger.files, ['src/ui/'], 'inside the repo, paths are the repo\'s own');
+  assert.ok(existsSync(join(ws, '.wololo', 'learned', 'both', 'learned.json')), 'cross-repo: at workspace level');
+  const all = listLearned(ws);
+  assert.deepEqual(all.map((i) => [i.id, i.repo ?? '', i.trigger.files.join(',')]).sort(), [['both', '', 'frontend/src/api.ts,backend/routes/'], ['fe', 'frontend', 'frontend/src/ui/']]);
+  assert.deepEqual(learnedFor(ws, { role: 'builder', touches: ['frontend/src/ui/button.tsx'] }).ids, ['fe'], 'a frontend UI step gets the frontend skill');
+  assert.deepEqual(learnedFor(ws, { role: 'builder', touches: ['backend/routes/auth.ts'] }).ids, ['both']);
+  removeLearned(ws, 'fe');
+  assert.ok(!existsSync(join(ws, 'frontend', '.wololo', 'learned', 'fe')));
+  // the same repo opened on its own reads its skills with its own paths
+  saveLearned(ws, /** @type {any} */ (item({ id: 'fe2', trigger: { roles: [], files: ['frontend/src/'] } })));
+  assert.deepEqual(listLearned(join(ws, 'frontend')).map((i) => i.trigger.files), [['src/']]);
+});

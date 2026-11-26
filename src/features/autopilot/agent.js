@@ -1,4 +1,4 @@
-import { gitOut } from '../../core/git.js';
+import { commitsSince, dirty, heads, snapshot } from '../../core/repos.js';
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { run } from '../../core/exec.js';
 import { ensureDir } from '../../core/files.js';
@@ -54,9 +54,9 @@ const STREAM = !process.env.WOLOLO_QUIET;
  * @param {string} base  HEAD when the agent started
  */
 export function progress(root, base) {
-  const dirty = gitOut(root, ['status', '--porcelain']).split('\n').filter(Boolean).length;
-  const commits = base ? gitOut(root, ['log', '--format=%s', `${base}..HEAD`]).split('\n').filter(Boolean) : [];
-  return `${dirty} uncommitted file(s), ${commits.length ? `${commits.length} commit(s), last: "${commits[0].slice(0, 80)}"` : 'no commits yet'}`;
+  const changed = dirty(root).length;
+  const commits = base ? commitsSince(root, base) : [];
+  return `${changed} uncommitted file(s), ${commits.length ? `${commits.length} commit(s), last: "${commits[0].slice(0, 80)}"` : 'no commits yet'}`;
 }
 
 /**
@@ -97,7 +97,7 @@ export async function runAgent(ctx, argv, role, log, meta = {}) {
   let serverError = '';
   const started = Date.now();
   saveRun(ctx.root, usageRecord());
-  const base = gitOut(ctx.root, ['rev-parse', 'HEAD']);
+  const base = heads(ctx.root);
   const stallMinutes = ctx.config.autopilot.stallMinutes ?? DEFAULT_STALL_MINUTES;
   const stallMs = stallMinutes * 60_000;
   const abort = new AbortController();
@@ -116,7 +116,7 @@ export async function runAgent(ctx, argv, role, log, meta = {}) {
   let waits = 0;
   let lastProgress = started;
   /** HEAD plus the working tree: changes here are progress even when the agent prints nothing. */
-  const tree = () => `${gitOut(ctx.root, ['rev-parse', 'HEAD'])}\n${gitOut(ctx.root, ['status', '--porcelain'])}`;
+  const tree = () => snapshot(ctx.root);
   let lastTree = tree();
   const watchdog = stallMs > 0
     ? setInterval(() => {

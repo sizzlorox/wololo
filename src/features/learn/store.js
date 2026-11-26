@@ -3,6 +3,7 @@ import { median } from '../../core/stats.js';
 import { dirname, join } from 'node:path';
 import { readJson, writeJson } from '../../core/files.js';
 import { overlaps, prefix } from '../autopilot/areas.js';
+import { isWorkspace, listRepos } from '../../core/repos.js';
 
 /**
  * Learned skills: workflows wololo saw agents repeat, written down once and handed only to the
@@ -20,6 +21,7 @@ import { overlaps, prefix } from '../autopilot/areas.js';
  * @property {{ calls: string[], runs: string[], tasks: string[], baselineTurns: number }} evidence
  * @property {string} created
  * @property {string} [decided]
+ * @property {string} [repo]     set when read from a repo of a workspace: the skill is that repo's
  */
 
 /** Most learned skills handed to one agent, and the longest body: they share its context. */
@@ -35,25 +37,69 @@ const NEVER_AFTER = 15;
  */
 export const learnedDir = (root) => join(process.env.WOLOLO_CONFIG ? dirname(process.env.WOLOLO_CONFIG) : root, '.wololo', 'learned');
 
+/** @param {string} dir @returns {Learned[]} */
+function readDir(dir) {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .map((id) => readJson(join(dir, id, 'learned.json'), /** @type {Learned | null} */ (null)))
+    .filter((x) => x !== null);
+}
+
+/** The workspace root, also from inside a parallel worker. @param {string} root */
+const mainRoot = (root) => (process.env.WOLOLO_CONFIG ? dirname(process.env.WOLOLO_CONFIG) : root);
+
 /**
+ * Learned skills: the project's own, plus in a workspace each repo's (committed with that repo).
+ * A repo's skills store paths relative to the repo; here they are prefixed ("frontend/src/") so
+ * triggers match workspace paths.
  * @param {string} root
  * @param {boolean} [own]  this checkout's skills (for sync), not the main repo's
  * @returns {Learned[]}
  */
 export function listLearned(root, own = false) {
-  const dir = own ? join(root, '.wololo', 'learned') : learnedDir(root);
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .map((id) => readJson(join(dir, id, 'learned.json'), /** @type {Learned | null} */ (null)))
-    .filter((x) => x !== null)
-    .sort((a, b) => a.created.localeCompare(b.created));
+  const base = own ? root : mainRoot(root);
+  const mine = readDir(join(base, '.wololo', 'learned'));
+  const repos = isWorkspace(base) ? listRepos(base) : [];
+  const theirs = repos.flatMap((repo) => readDir(join(base, repo, '.wololo', 'learned')).map((i) => ({ ...i, repo, trigger: { ...i.trigger, files: i.trigger.files.map((f) => `${repo}/${f}`) } })));
+  return [...mine, ...theirs].sort((x, y) => x.created.localeCompare(y.created));
+}
+
+/**
+ * Where a learned skill belongs: in a workspace, a skill whose trigger files all sit in one repo is
+ * that repo's (and is committed with it); anything else is the workspace's.
+ * @param {string} root @param {Learned} item
+ * @returns {string | undefined} the repo
+ */
+export function scopeOf(root, item) {
+  if (item.repo) return item.repo;
+  const base = mainRoot(root);
+  if (!isWorkspace(base) || !item.trigger.files.length) return undefined;
+  const repos = new Set(item.trigger.files.map((f) => f.replace(/\\/g, '/').split('/')[0]));
+  const [only] = repos;
+  return repos.size === 1 && listRepos(base).includes(only) ? only : undefined;
 }
 
 /** @param {string} root @param {Learned} item */
-export const saveLearned = (root, item) => writeJson(join(learnedDir(root), item.id, 'learned.json'), item);
+export function saveLearned(root, item) {
+  const repo = scopeOf(root, item);
+  const base = mainRoot(root);
+  if (!repo) return writeJson(join(learnedDir(root), item.id, 'learned.json'), item);
+  const { repo: _r, ...rest } = item;
+  const files = item.trigger.files.map((f) => f.replace(/\\/g, '/').slice(repo.length + 1));
+  writeJson(join(base, repo, '.wololo', 'learned', item.id, 'learned.json'), { ...rest, trigger: { ...item.trigger, files } });
+}
+
+/** Where a learned skill's files live (its folder). @param {string} root @param {Learned} item */
+export const learnedPath = (root, item) => {
+  const repo = scopeOf(root, item);
+  return repo ? join(mainRoot(root), repo, '.wololo', 'learned', item.id) : join(learnedDir(root), item.id);
+};
 
 /** @param {string} root @param {string} id */
-export const removeLearned = (root, id) => rmSync(join(learnedDir(root), id), { recursive: true, force: true });
+export function removeLearned(root, id) {
+  const item = listLearned(root).find((i) => i.id === id);
+  rmSync(item ? learnedPath(root, item) : join(learnedDir(root), id), { recursive: true, force: true });
+}
 
 /** builder, fixer, verifier (…), from a run's role label. @param {string} role */
 export const baseRole = (role) => role.split(/ [(·]/)[0].trim();
@@ -105,11 +151,10 @@ export function learnedFor(root, at) {
     .sort((a, b) => (a.status === 'kept' ? 0 : 1) - (b.status === 'kept' ? 0 : 1))
     .slice(0, MAX_PER_AGENT);
   if (!picked.length) return { text: '', ids: [] };
-  const dir = learnedDir(root);
   const text = [
     '',
     'Learned in this repo from earlier agents (use it instead of working it out again):',
-    ...picked.map((i) => `\n### ${i.title}\n${i.body.slice(0, MAX_BODY).replaceAll('{{script}}', `node "${join(dir, i.id, 'run.mjs').replace(/\\/g, '/')}"`)}`),
+    ...picked.map((i) => `\n### ${i.title}\n${i.body.slice(0, MAX_BODY).replaceAll('{{script}}', `node "${join(learnedPath(root, i), 'run.mjs').replace(/\\/g, '/')}"`)}`),
   ].join('\n');
   return { text, ids: picked.map((i) => i.id) };
 }

@@ -40,7 +40,7 @@ export function buildOps(ctx) {
   // by hand (/learned-<id>); disable-model-invocation keeps it out of Claude's context otherwise.
   if (config.harnesses.includes('claude')) {
     for (const l of listLearned(root, true).filter((x) => x.status !== 'retired')) {
-      const body = l.body.replaceAll('{{script}}', `node .wololo/learned/${l.id}/run.mjs`);
+      const body = l.body.replaceAll('{{script}}', `node ${l.repo ? `${l.repo}/` : ''}.wololo/learned/${l.id}/run.mjs`);
       ops.push({ kind: 'write', path: `.claude/skills/learned-${l.id}/SKILL.md`, content: `---\nname: learned-${l.id}\ndescription: ${l.title.replace(/\n/g, ' ')} (learned by wololo from repeated agent work)\ndisable-model-invocation: true\n---\n\n# ${l.title}\n\n${body}\n` });
     }
   }

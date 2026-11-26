@@ -1,4 +1,5 @@
 import { git } from '../../core/git.js';
+import { listRepos, repoDir } from '../../core/repos.js';
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { truncate } from '../../core/text.js';
@@ -43,13 +44,15 @@ export function stepsFrom(text) {
  */
 export function dirtyWork(root) {
   const numstat = new Map(
-    (git(root, ['diff', '--numstat', 'HEAD', '--', '.', ':(exclude).wololo']).stdout ?? '')
-      .split('\n')
-      .filter(Boolean)
-      .map((l) => {
-        const [add, del, path] = l.split('\t');
-        return [path, `+${add} -${del}`];
-      }),
+    listRepos(root).flatMap((r) =>
+      (git(repoDir(root, r), ['diff', '--numstat', 'HEAD', '--', '.', ':(exclude).wololo']).stdout ?? '')
+        .split('\n')
+        .filter(Boolean)
+        .map((l) => {
+          const [add, del, path] = l.split('\t');
+          return /** @type {[string, string]} */ ([r === '.' ? path : `${r}/${path}`, `+${add} -${del}`]);
+        }),
+    ),
   );
   return dirtyFiles(root).map((line) => {
     const path = line.slice(3).replace(/^"|"$/g, '');

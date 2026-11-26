@@ -67,3 +67,15 @@ test('autopilot.protectedBranches overrides the list', () => {
   assert.equal(r.code, 0, r.out + r.err);
   assert.equal(head(), 'master', 'master is not in this repo\'s list: the run stays on it');
 });
+
+test('a single repo with master and develop needs autopilot.base; with it, features start from that branch', () => {
+  setup({ verifiers: 0, gapRounds: 0, hillClimb: 0 });
+  git(['branch', 'develop']);
+  const refused = wololo(['autopilot', '--goal', 'Add a greet helper']);
+  assert.equal(refused.code, 2);
+  assert.match(refused.out + refused.err, /it has master and develop: set which one features start from in autopilot.base/);
+  setup({ verifiers: 0, gapRounds: 0, hillClimb: 0, base: 'develop' });
+  const r = wololo(['autopilot', '--goal', 'Add a greet helper']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.err, /created branch feature\/add-a-greet-helper from develop/);
+});

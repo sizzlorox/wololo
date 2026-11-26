@@ -10,15 +10,16 @@ import { statePath } from '../../core/state.js';
  * @property {'pending' | 'ok' | 'fix-env' | 'revert'} status
  * @property {string} [note]
  * @property {string} sampledAt
+ * @property {string} [repo]   the repo of a workspace it belongs to
  * @property {string} [reviewedAt]
  */
 
-/** @param {string} root @returns {{ cursor?: string, items: Review[] }} */
+/** @param {string} root @returns {{ cursor?: string | Record<string, string>, items: Review[] }} */
 export function readReviews(root) {
   return readJson(statePath(root, 'reviews.json'), { items: [] });
 }
 
-/** @param {string} root @param {{ cursor?: string, items: Review[] }} state */
+/** @param {string} root @param {{ cursor?: string | Record<string, string>, items: Review[] }} state */
 export function writeReviews(root, state) {
   writeJson(statePath(root, 'reviews.json'), state);
 }

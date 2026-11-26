@@ -1,5 +1,7 @@
 import { spawn } from '../../core/proc.js';
 import { git, gitOut } from '../../core/git.js';
+import { heads, listRepos, repoDir, resetTo } from '../../core/repos.js';
+import { mirrorWorkspace } from './mirror.js';
 import { removeWorktree } from '../../core/worktree.js';
 import { existsSync, mkdirSync, openSync, symlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
@@ -16,11 +18,12 @@ import { gateFailures, log, runLoop } from './loop.js';
 import { order, scaffoldIfUnverifiable } from './plan.js';
 import { mergerPrompt } from './prompts.js';
 import { overlaps } from './areas.js';
+import { overwritten, pickReady, waitReasons } from './schedule.js';
 
-export { overlaps };
+export { overlaps, overwritten, pickReady, waitReasons };
 import { annotate } from './annotate.js';
 import { addSeam, afterSeam, hotspot } from './seam.js';
-import { ensureBranch, protectedHere } from './branch.js';
+import { ensureBranch, protectedHere, repoBases } from './branch.js';
 
 export { hotspot };
 import { learn } from '../learn/learn.js';
@@ -30,88 +33,6 @@ import { count, readStatus, setStatus } from './status.js';
 const board = Object.fromEntries(boardCommands.map((c) => [c.name, c]));
 /** Merge attempts (merger agent, then retry) before a step is blocked on a human. */
 const MERGE_ATTEMPTS = 2;
-
-/**
- * Which steps to start now: their deps landed and merged (a split step counts once all its parts did),
- * they overlap nothing running or waiting to merge, up to the worker limit, in plan order.
- * @param {import('../board/store.js').Task[]} tasks  one group
- * @param {{ running: string[], unmerged: string[], workers: number }} now
- */
-export function pickReady(tasks, now) {
-  const byId = new Map(tasks.map((t) => [t.id, t]));
-  /** @param {string} id @returns {boolean} */
-  const landed = (id) => {
-    const t = byId.get(id);
-    if (!t) return true; // removed from the board
-    if (t.status !== 'done' || now.unmerged.includes(id)) return false;
-    return (t.splitInto ?? []).every(landed);
-  };
-  const busy = tasks.filter((t) => now.running.includes(t.id) || now.unmerged.includes(t.id));
-  /** @type {import('../board/store.js').Task[]} */
-  const picked = [];
-  for (const t of [...tasks].sort((a, b) => order(a) - order(b))) {
-    if (busy.length + picked.length >= now.workers) break;
-    if (now.running.includes(t.id)) continue;
-    const open = t.status === 'todo' || (t.status === 'claimed' && t.agent?.startsWith('autopilot:'));
-    if (!open || !(t.deps ?? []).every(landed)) continue;
-    if ([...busy, ...picked].some((o) => overlaps(t.touches ?? [], o.touches ?? []))) continue;
-    picked.push(t);
-  }
-  return picked;
-}
-
-
-/**
- * Why each open step that will not start now is waiting: an unmerged dep, a shared file, or no free worker.
- * @param {import('../board/store.js').Task[]} tasks
- * @param {{ running: string[], unmerged: string[], workers: number }} now
- * @returns {Record<string, string>} task id → reason
- */
-export function waitReasons(tasks, now) {
-  const byId = new Map(tasks.map((t) => [t.id, t]));
-  const ready = new Set(pickReady(tasks, now).map((t) => t.id));
-  const busy = tasks.filter((t) => now.running.includes(t.id) || now.unmerged.includes(t.id));
-  /** @param {string} id @returns {boolean} */
-  const landed = (id) => {
-    const t = byId.get(id);
-    return !t || (t.status === 'done' && !now.unmerged.includes(id) && (t.splitInto ?? []).every(landed));
-  };
-  /** @type {Record<string, string>} */
-  const out = {};
-  for (const t of tasks) {
-    const open = t.status === 'todo' || (t.status === 'claimed' && t.agent?.startsWith('autopilot:'));
-    if (!open || ready.has(t.id) || now.running.includes(t.id)) continue;
-    const dep = (t.deps ?? []).find((d) => !landed(d));
-    if (dep) {
-      out[t.id] = `needs ${byId.get(dep)?.title ?? dep} merged`;
-      continue;
-    }
-    const other = busy.find((o) => overlaps(t.touches ?? [], o.touches ?? []));
-    if (other) {
-      const shared = (t.touches ?? []).find((x) => overlaps([x], other.touches ?? [])) ?? 'files';
-      out[t.id] = !t.touches?.length ? `does not say which files it changes, so it runs alone` : `shares ${shared} with ${other.title} (${now.running.includes(other.id) ? 'running' : 'merging'})`;
-      continue;
-    }
-    out[t.id] = 'no free worker';
-  }
-  return out;
-}
-
-
-/**
- * Files git names when it refuses to start a merge because they would be overwritten.
- * @param {string} stderr
- */
-export function overwritten(stderr) {
-  const out = [];
-  let inList = false;
-  for (const line of stderr.split(/\r?\n/)) {
-    if (/would be overwritten by merge:/.test(line)) inList = true;
-    else if (inList && /^\s+\S/.test(line)) out.push(line.trim());
-    else inList = false;
-  }
-  return out;
-}
 
 /** Split steps reuse their parent's worktree and branch, so a part continues the parent's work. @param {string} id */
 const rootId = (id) => id.replace(/(-s\d+)+$/, '');
@@ -135,10 +56,14 @@ export async function runParallel(ctx, group, opts) {
   // Steps merge into the checked-out branch. On a detached HEAD, make one for this plan, named
   // the way the repo names branches (feature/…, fix/…), so the work lands somewhere you can find.
   const goal = all().find((t) => t.goal)?.goal ?? group;
-  const on = ensureBranch(root, goal, { key: group, patterns: ctx.config.autopilot.protectedBranches });
+  const on = ensureBranch(root, goal, { key: group, patterns: ctx.config.autopilot.protectedBranches, bases: repoBases(ctx.config) });
   if ('error' in on) return { ok: false, summary: `parallel autopilot never merges into a protected branch: ${on.error}` };
   if (on.created || on.switched) log(`steps merge into ${on.branch}`);
-  const main = on.branch;
+  // One repo, or each repo of a workspace (frontend/, backend/): every step gets a worktree per repo.
+  const repos = listRepos(root);
+  const mainOf = (/** @type {string} */ r) => gitOut(repoDir(root, r), ['rev-parse', '--abbrev-ref', 'HEAD']);
+  const mains = () => repos.map((r) => (r === '.' ? mainOf(r) : `${mainOf(r)} (${r})`)).join(', ');
+  const main = mains();
   const trees = join(dirname(root), `.${basename(root)}-wololo-worktrees`);
   const entry = process.argv[1];
 
@@ -152,17 +77,29 @@ export async function runParallel(ctx, group, opts) {
 
   /** @param {string} id */
   const branchOf = (id) => `wololo/${rootId(id)}`;
-  /** @param {string} id */
+  /** The folder a step's worker runs in. @param {string} id */
   const dirOf = (id) => join(trees, rootId(id));
-  const branchExists = (/** @type {string} */ b) => git(root, ['rev-parse', '--verify', '--quiet', `refs/heads/${b}`]).status === 0;
-  const mergedIntoMain = (/** @type {string} */ b) => git(root, ['merge-base', '--is-ancestor', b, main]).status === 0;
+  /** A step's worktree of one repo: the step folder itself for a single repo. @param {string} id @param {string} r */
+  const wt = (id, r) => (r === '.' ? dirOf(id) : join(dirOf(id), r));
+  const branchExists = (/** @type {string} */ r, /** @type {string} */ b) => git(repoDir(root, r), ['rev-parse', '--verify', '--quiet', `refs/heads/${b}`]).status === 0;
+  /** The step's branch has commits its repo's branch does not. @param {string} r @param {string} b */
+  const ahead = (r, b) => branchExists(r, b) && Number(gitOut(repoDir(root, r), ['rev-list', '--count', `HEAD..${b}`])) > 0;
+
+  /** A merged step's worktrees, folder and branches go. @param {string} id */
+  const removeStep = (id) => {
+    for (const r of repos) {
+      removeWorktree(repoDir(root, r), wt(id, r));
+      git(repoDir(root, r), ['branch', '-D', branchOf(id)]);
+    }
+    if (repos[0] !== '.') removeWorktree(root, dirOf(id)); // the step folder: unlinks the mirrored workspace files first
+  };
 
   /**
    * Reset a step's worktree to its branch when an interrupted merge (or merger) left it mid-way.
    * @param {string} dir
    */
   const clearUnfinishedMerge = (dir) => {
-    if (!existsSync(dir)) return;
+    if (!existsSync(join(dir, '.git'))) return;
     const merging = git(dir, ['rev-parse', '-q', '--verify', 'MERGE_HEAD']).status === 0;
     const dirty = git(dir, ['status', '--porcelain']).stdout.trim();
     if (!merging && !dirty) return;
@@ -178,13 +115,18 @@ export async function runParallel(ctx, group, opts) {
    * @param {string[]} [paths]
    */
   const snapshot = (title, paths = []) => {
-    if (paths.length) git(root, ['add', '--', ...paths]);
-    const dirty = git(root, ['status', '--porcelain', '--untracked-files=no']).stdout.split('\n').filter(Boolean);
-    if (!dirty.length) return;
-    const r = git(root, ['commit', '-q', '-a', '--no-verify', '-m', `autopilot: commit uncommitted changes in the main checkout before merging "${title}"`]);
-    if (r.status === 0) {
-      log(`committed ${dirty.length} uncommitted file(s) in the main checkout before merging ${title}: ${dirty.map((l) => l.slice(3)).slice(0, 6).join(', ')}${dirty.length > 6 ? ', …' : ''}`);
-      post(root, group, { from: 'wololo', title: 'wololo', text: `committed ${dirty.length} uncommitted file(s) in the main checkout before merging "${title}"` });
+    for (const r of repos) {
+      const d = repoDir(root, r);
+      const mine = paths.filter((p) => r === '.' || p.startsWith(`${r}/`)).map((p) => (r === '.' ? p : p.slice(r.length + 1)));
+      if (mine.length) git(d, ['add', '--', ...mine]);
+      const dirty = git(d, ['status', '--porcelain', '--untracked-files=no']).stdout.split('\n').filter(Boolean);
+      if (!dirty.length) continue;
+      const where = r === '.' ? 'the main checkout' : `${r}`;
+      const c = git(d, ['commit', '-q', '-a', '--no-verify', '-m', `autopilot: commit uncommitted changes in ${where} before merging "${title}"`]);
+      if (c.status === 0) {
+        log(`committed ${dirty.length} uncommitted file(s) in ${where} before merging ${title}: ${dirty.map((l) => l.slice(3)).slice(0, 6).join(', ')}${dirty.length > 6 ? ', …' : ''}`);
+        post(root, group, { from: 'wololo', title: 'wololo', text: `committed ${dirty.length} uncommitted file(s) in ${where} before merging "${title}"` });
+      }
     }
   };
 
@@ -199,32 +141,36 @@ export async function runParallel(ctx, group, opts) {
   mkdirSync(statePath(root, 'workers'), { recursive: true });
 
   // A run that stopped mid-way may have left steps landed on their branch but not merged.
-  for (const t of all()) if (t.status === 'done' && !t.splitInto && branchExists(branchOf(t.id)) && !mergedIntoMain(branchOf(t.id))) unmerged.push(t.id);
+  for (const t of all()) if (t.status === 'done' && !t.splitInto && repos.some((r) => ahead(r, branchOf(t.id)))) unmerged.push(t.id);
   // ...and a merger stopped while merging main into a step's worktree leaves conflicts and scratch
   // files there. The step's own work is all committed on its branch: go back to that, merge again.
-  for (const id of unmerged) clearUnfinishedMerge(dirOf(id));
+  for (const id of unmerged) for (const r of repos) clearUnfinishedMerge(wt(id, r));
 
   /** @param {import('../board/store.js').Task} t */
   const start = (t) => {
     const dir = dirOf(t.id);
     const branch = branchOf(t.id);
-    // A folder left behind is not a worktree: Windows can keep a removed worktree's folder (a process
-    // still had a file open), and a worker started in it works outside git, in the main checkout.
-    if (existsSync(dir) && gitOut(dir, ['rev-parse', '--abbrev-ref', 'HEAD']) !== branch) {
-      log(`${dir} is left over and is not the ${branch} worktree; recreating it`);
-      removeWorktree(root, dir);
-    }
-    if (!existsSync(dir)) {
-      mkdirSync(trees, { recursive: true });
-      const r = branchExists(branch) ? git(root, ['worktree', 'add', dir, branch]) : git(root, ['worktree', 'add', '-b', branch, dir, main]);
-      if (r.status !== 0) {
-        log(`could not create a worktree for ${t.id}: ${tail(r.stderr, 3)}`);
-        void board['task block'].run({ id: t.id, on: 'human', reason: `autopilot: could not create its git worktree: ${tail(r.stderr, 2)}` }, ctx);
+    for (const r of repos) {
+      const w = wt(t.id, r);
+      // A folder left behind is not a worktree: Windows can keep a removed worktree's folder (a process
+      // still had a file open), and a worker started in it works outside git, in the main checkout.
+      if (existsSync(w) && gitOut(w, ['rev-parse', '--abbrev-ref', 'HEAD']) !== branch) {
+        log(`${w} is left over and is not the ${branch} worktree; recreating it`);
+        removeWorktree(repoDir(root, r), w);
+      }
+      if (existsSync(w)) continue;
+      mkdirSync(r === '.' ? trees : dir, { recursive: true });
+      const res = branchExists(r, branch) ? git(repoDir(root, r), ['worktree', 'add', w, branch]) : git(repoDir(root, r), ['worktree', 'add', '-b', branch, w, 'HEAD']);
+      if (res.status !== 0) {
+        log(`could not create a worktree for ${t.id}${r === '.' ? '' : ` in ${r}`}: ${tail(res.stderr, 3)}`);
+        void board['task block'].run({ id: t.id, on: 'human', reason: `autopilot: could not create its git worktree: ${tail(res.stderr, 2)}` }, ctx);
         return;
       }
       // Installed dependencies are not in git: share them instead of reinstalling per worktree.
-      for (const deps of ['node_modules']) if (existsSync(join(root, deps)) && !existsSync(join(dir, deps))) symlinkSync(join(root, deps), join(dir, deps), 'junction');
+      const deps = join(repoDir(root, r), 'node_modules');
+      if (existsSync(deps) && !existsSync(join(w, 'node_modules'))) symlinkSync(deps, join(w, 'node_modules'), 'junction');
     }
+    if (repos[0] !== '.') mirrorWorkspace(root, dir, repos);
     if (t.status === 'claimed') unlock(root, t.id);
     const env = {
       ...process.env,
@@ -282,38 +228,47 @@ export async function runParallel(ctx, group, opts) {
       // Uncommitted work in the main checkout (a settings change, files a build regenerated) is
       // committed first, so neither the merge nor undoing it can touch it.
       snapshot(t.title);
-      const merge = () => git(root, ['merge', '--no-ff', '--no-edit', '-m', `Merge "${t.title}" (autopilot, parallel)`, branch]);
-      let m = merge();
-      // git refuses to start when the branch adds a file that exists untracked here: include those files too
-      const blocking = overwritten(m.stderr ?? '');
-      if (m.status !== 0 && blocking.length) {
-        snapshot(t.title, blocking);
-        m = merge();
-      }
-      const before = git(root, ['rev-parse', 'HEAD^1']).stdout.trim();
+      const before = heads(root);
       /** @type {{ conflicts: string[], failures?: string } | null} */
       let problem = null;
-      if (m.status !== 0 && git(root, ['rev-parse', '-q', '--verify', 'MERGE_HEAD']).status !== 0) {
-        // the merge never started and committing local changes did not help: nothing an agent can fix
-        state(`could not start the merge: ${tail(m.stderr ?? '', 2)}`);
-        log(`could not start merging ${t.title}: ${tail(m.stderr ?? '', 4)}`);
+      let refused = '';
+      for (const r of repos.filter((x) => ahead(x, branch))) {
+        const d = repoDir(root, r);
+        const merge = () => git(d, ['merge', '--no-ff', '--no-edit', '-m', `Merge "${t.title}" (autopilot, parallel)`, branch]);
+        let m = merge();
+        // git refuses to start when the branch adds a file that exists untracked here: include those files too
+        const blocking = overwritten(m.stderr ?? '');
+        if (m.status !== 0 && blocking.length) {
+          snapshot(t.title, blocking.map((f) => (r === '.' ? f : `${r}/${f}`)));
+          m = merge();
+        }
+        if (m.status === 0) continue;
+        if (git(d, ['rev-parse', '-q', '--verify', 'MERGE_HEAD']).status !== 0) {
+          refused = `${r === '.' ? '' : `${r}: `}${tail(m.stderr ?? '', 2)}`;
+          break;
+        }
+        const conflicts = git(d, ['diff', '--name-only', '--diff-filter=U']).stdout.split('\n').filter(Boolean).map((f) => (r === '.' ? f : `${r}/${f}`));
+        git(d, ['merge', '--abort']);
+        problem = { conflicts };
         break;
       }
-      if (m.status !== 0) {
-        const conflicts = git(root, ['diff', '--name-only', '--diff-filter=U']).stdout.split('\n').filter(Boolean);
-        git(root, ['merge', '--abort']);
-        problem = { conflicts };
-      } else {
+      if (refused || problem) resetTo(root, before); // a step lands in every repo or in none
+      if (refused) {
+        // the merge never started and committing local changes did not help: nothing an agent can fix
+        state(`could not start the merge: ${refused}`);
+        log(`could not start merging ${t.title}: ${refused}`);
+        break;
+      }
+      if (!problem) {
         state('gate on the merged result');
         const gate = await runGate(ctx);
         if (!gate.ok) {
-          git(root, ['reset', '--hard', before]); // uncommitted work was committed before the merge: this only undoes the merge
+          resetTo(root, before); // uncommitted work was committed before the merge: this only undoes the merge
           problem = { conflicts: [], failures: clip(gateFailures(gate), failureBudget(ctx.config.autopilot.contextWindow)) };
         }
       }
       if (!problem) {
-        removeWorktree(root, dir);
-        git(root, ['branch', '-D', branch]);
+        removeStep(id);
         await board['task note'].run({ id, note: `autopilot: merged into ${main}` }, ctx);
         post(root, group, { from: 'wololo', title: 'wololo', text: `"${t.title}" (${id}) is merged into ${main}${t.touches?.length ? ` (changed ${t.touches.join(', ')})` : ''}. If your step uses it, run \`git merge ${main}\` in your worktree.` });
         recordEvent(root, { type: 'merge', ok: true, task: id, attempts: attempt + 1 });
@@ -325,14 +280,20 @@ export async function runParallel(ctx, group, opts) {
       // Bring main into the branch, in its worktree, and let an agent make both sides work.
       state(problem.conflicts.length ? `conflict in ${problem.conflicts.length} file(s): merger agent` : 'merged result fails the gate: merger agent');
       log(`${t.title}: ${problem.conflicts.length ? `conflicts in ${problem.conflicts.join(', ')}` : 'merged result fails the gate'}; a merger agent reconciles it with ${main}`);
-      const landed = git(dir, ['log', '--format=%s', `${branch}..${main}`]).stdout.split('\n').filter(Boolean).slice(0, 10);
-      clearUnfinishedMerge(dir);
-      const inTree = git(dir, ['merge', '--no-edit', main]);
-      const conflicts = inTree.status === 0 ? [] : git(dir, ['diff', '--name-only', '--diff-filter=U']).stdout.split('\n').filter(Boolean);
+      const landed = repos.flatMap((r) => gitOut(repoDir(root, r), ['log', '--format=%s', `${branch}..HEAD`]).split('\n').filter(Boolean)).slice(0, 10);
+      /** @type {string[]} */
+      const conflicts = [];
+      for (const r of repos) {
+        const w = wt(id, r);
+        clearUnfinishedMerge(w);
+        const inTree = git(w, ['merge', '--no-edit', mainOf(r)]);
+        if (inTree.status !== 0) conflicts.push(...git(w, ['diff', '--name-only', '--diff-filter=U']).stdout.split('\n').filter(Boolean).map((f) => (r === '.' ? f : `${r}/${f}`)));
+      }
       const wctx = { ...ctx, root: dir };
-      await runAgent(wctx, agentArgv(ctx.config, opts.agent, mergerPrompt(ctx.config.bin, { title: t.title, main, conflicts, failures: problem.failures, landed }), { root: dir }), `merger · ${t.title}`, log);
-      if (existsSync(join(dir, '.git')) && git(dir, ['rev-parse', '-q', '--verify', 'MERGE_HEAD']).status === 0) {
-        git(dir, ['merge', '--abort']);
+      await runAgent(wctx, agentArgv(ctx.config, opts.agent, mergerPrompt(ctx.config.bin, { title: t.title, main: mains(), conflicts, failures: problem.failures, landed }), { root: dir }), `merger · ${t.title}`, log);
+      const unfinished = repos.filter((r) => git(wt(id, r), ['rev-parse', '-q', '--verify', 'MERGE_HEAD']).status === 0);
+      if (unfinished.length) {
+        for (const r of unfinished) git(wt(id, r), ['merge', '--abort']);
         continue; // the merger did not finish the merge: the next attempt starts over
       }
       // gate green in the worktree before trying main again (fixer loop, no verifiers)

@@ -1,5 +1,6 @@
 import { readJson, writeJson } from '../../core/files.js';
 import { git, gitOut } from '../../core/git.js';
+import { listRepos, repoDir } from '../../core/repos.js';
 import { statePath } from '../../core/state.js';
 
 /**
@@ -97,39 +98,101 @@ export function rememberBranch(root, key, branch) {
   writeJson(plansFile(root), { ...readJson(plansFile(root), {}), [key]: branch });
 }
 
+/** Branches a repo may integrate on. A repo with more than one of them must say which features start from. */
+export const INTEGRATION = ['main', 'master', 'develop', 'development', 'trunk'];
+
 /**
- * Put the repo on a branch autopilot may commit to. On a protected branch (or a detached HEAD):
- * the plan's own branch if it has one, else a new one named after the goal in the repo's style.
- * The checked-out branch is kept otherwise. Uncommitted changes come along; if git refuses, no run.
+ * The integration branches a repo has (local), in INTEGRATION order.
+ * @param {string} dir
+ */
+export const integrationBranches = (dir) => INTEGRATION.filter((b) => git(dir, ['rev-parse', '--verify', '--quiet', `refs/heads/${b}`]).status === 0);
+
+/**
+ * Where a repo's feature branches start. Never guessed when it could be either: a repo that has
+ * more than one integration branch (e.g. master and develop, used for different things) must set
+ * it. Otherwise the branch it is on.
+ * @param {string} dir @param {string} current @param {string} [configured]
+ * @returns {{ base: string } | { ambiguous: string[] }}
+ */
+export function baseOf(dir, current, configured) {
+  if (configured) return { base: configured };
+  const candidates = integrationBranches(dir);
+  if (candidates.length > 1) return { ambiguous: candidates };
+  return { base: current && current !== 'HEAD' ? current : 'HEAD' };
+}
+
+/**
+ * Put every repo on a branch autopilot may commit to. A repo on a protected branch (or a detached
+ * HEAD) switches to the plan's remembered branch, or gets a new one named after the goal in the
+ * repos' style, cut from that repo's base (develop, main, master: per repo). A repo already on an
+ * unprotected branch stays there. Uncommitted changes come along; if git refuses, no run.
  * @param {string} root @param {string} goal
- * @param {{ key?: string, patterns?: string[] }} [o]  key: the plan (group) this run belongs to
- * @returns {{ branch: string, created?: boolean, switched?: boolean, from?: string } | { error: string }}
+ * @param {{ key?: string, patterns?: string[], bases?: Record<string, string> }} [o]  key: the plan (group)
+ * @returns {{ branch: string, created?: boolean, switched?: boolean, from?: string, notes: string[] } | { error: string }}
  */
 export function ensureBranch(root, goal, o = {}) {
-  const current = gitOut(root, ['rev-parse', '--abbrev-ref', 'HEAD']);
-  const detached = !current || current === 'HEAD';
-  if (!detached && !isProtected(current, o.patterns)) return { branch: current };
+  const repos = listRepos(root);
+  if (!repos.length) return { error: 'this folder is not a git repo and holds no repos' };
   const remembered = o.key ? /** @type {Record<string, string>} */ (readJson(plansFile(root), {}))[o.key] : undefined;
-  if (remembered && !isProtected(remembered, o.patterns) && git(root, ['rev-parse', '--verify', '--quiet', `refs/heads/${remembered}`]).status === 0) {
-    const r = git(root, ['switch', remembered]);
-    if (r.status !== 0) return { error: `could not switch to ${remembered}: ${(r.stderr ?? '').trim()}` };
-    return { branch: remembered, switched: true, from: detached ? 'a detached HEAD' : current };
+  const existing = repos.flatMap((r) => gitOut(repoDir(root, r), ['for-each-ref', '--format=%(refname:short)', 'refs/heads', 'refs/remotes']).split('\n').filter(Boolean));
+  const name = remembered && !isProtected(remembered, o.patterns) ? remembered : branchFor(goal, existing);
+  /** @type {string[]} */
+  const notes = [];
+  let created = false;
+  let switched = false;
+  let from = '';
+  let branch = '';
+  for (const r of repos) {
+    const dir = repoDir(root, r);
+    const where = r === '.' ? '' : `${r}: `;
+    const current = gitOut(dir, ['rev-parse', '--abbrev-ref', 'HEAD']);
+    const detached = !current || current === 'HEAD';
+    if (!detached && !isProtected(current, o.patterns)) {
+      branch ||= current;
+      continue;
+    }
+    from ||= detached ? 'a detached HEAD' : current;
+    const why = detached ? 'HEAD was detached' : `${current} is protected`;
+    if (git(dir, ['rev-parse', '--verify', '--quiet', `refs/heads/${name}`]).status === 0) {
+      const res = git(dir, ['switch', name]);
+      if (res.status !== 0) return { error: `${where}could not switch to ${name}: ${(res.stderr ?? '').trim()}` };
+      switched = true;
+      notes.push(`${where}${why}: switched to ${name}, this plan's branch`);
+    } else {
+      const which = baseOf(dir, current, o.bases?.[r]);
+      if ('ambiguous' in which) {
+        const key = r === '.' ? 'autopilot.base' : `autopilot.repos.${r}.base`;
+        return { error: `${where}it has ${which.ambiguous.join(' and ')}: set which one features start from in ${key} (Config tab, or wololo init)` };
+      }
+      const base = which.base;
+      const res = git(dir, ['switch', '-c', name, base]);
+      if (res.status !== 0) return { error: `${where}could not create branch ${name} from ${base}: ${(res.stderr ?? '').trim()}` };
+      created = true;
+      notes.push(`${where}${why}: created branch ${name} from ${base}; the work lands there`);
+    }
+    branch ||= name;
   }
-  const existing = gitOut(root, ['for-each-ref', '--format=%(refname:short)', 'refs/heads', 'refs/remotes']).split('\n').filter(Boolean);
-  const name = branchFor(goal, existing);
-  const r = git(root, ['switch', '-c', name]);
-  if (r.status !== 0) return { error: `could not create branch ${name}: ${(r.stderr ?? '').trim()}` };
-  if (o.key) rememberBranch(root, o.key, name);
-  return { branch: name, created: true, from: detached ? 'a detached HEAD' : current };
+  if ((created || switched) && o.key) rememberBranch(root, o.key, name);
+  return { branch, created, switched, from, notes };
 }
 
 /**
  * Last line of defence before wololo itself commits or merges: an agent may have checked out a
- * protected branch mid-run. Returns why not, or '' when it is fine.
+ * protected branch mid-run, in any repo. Returns why not, or '' when it is fine.
  * @param {string} root @param {string[]} [patterns]
  */
 export function protectedHere(root, patterns) {
-  const current = gitOut(root, ['rev-parse', '--abbrev-ref', 'HEAD']);
-  if (current === 'HEAD') return 'refusing to commit on a detached HEAD';
-  return isProtected(current, patterns) ? `refusing to commit to ${current}: it is protected (autopilot.protectedBranches). Check out the run's branch and resume` : '';
+  for (const r of listRepos(root)) {
+    const current = gitOut(repoDir(root, r), ['rev-parse', '--abbrev-ref', 'HEAD']);
+    const where = r === '.' ? '' : ` in ${r}`;
+    if (current === 'HEAD') return `refusing to commit on a detached HEAD${where}`;
+    if (isProtected(current, patterns)) return `refusing to commit to ${current}${where}: it is protected (autopilot.protectedBranches). Check out the run's branch and resume`;
+  }
+  return '';
 }
+
+/** The configured base branch of each repo: autopilot.repos[name].base, and autopilot.base for a single repo ('.'). @param {import('../../core/config.js').Config} config */
+export const repoBases = (config) => ({
+  ...(config.autopilot.base ? { '.': config.autopilot.base } : {}),
+  ...Object.fromEntries(Object.entries(config.autopilot.repos ?? {}).filter(([, v]) => v?.base).map(([k, v]) => [k, /** @type {string} */ (v.base)])),
+});

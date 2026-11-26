@@ -1,3 +1,5 @@
+import { diffHint } from '../../core/repos.js';
+
 // Prompts are thin: they point at skills (the workflow) and hand over the gate output (the facts).
 
 export const VERIFIER_FOCUS = [
@@ -33,7 +35,7 @@ export function verifierPrompt(bin, focus, base) {
     `You are a verifier agent. Fuzz the current change with a focus on: ${focus}.`,
     // Without a base, "the current change" reads as the latest commit, which is the previous verifier's fix:
     // each verifier then fuzzes that fix deeper and the loop never converges.
-    ...(base ? [`The change is the whole task: \`git diff ${base}\` (commits since ${base.slice(0, 12)} plus the working tree), not just the latest commit.`] : []),
+    ...(base ? [`The change is the whole task: ${diffHint(base)} (its commits plus the working tree), not just the latest commit.`] : []),
     'Follow the `verify` and `tdd` skills. Actually run and use what was built (hands and eyes), do not just read the diff.',
     'A real defect is one a user, the running program or real data can hit. Hand-picked extreme values (1e38, denormals, NaN) fed to internal code are not findings unless such input actually reaches it.',
     'If you find a real defect: write a failing test that proves it, fix it, make the gate green, commit. Each finding is one test plus one fix.',

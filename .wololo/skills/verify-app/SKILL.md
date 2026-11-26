@@ -38,6 +38,7 @@ Events: `.wololo/state/events.jsonl`. Board, queue, reviews: `.wololo/state/`. G
 12. Learned skills: a workflow repeated across steps is written down once, adopted on trial and handed to the next matching agent; `autopilot.learn` off/suggest. See `test/learn-e2e.test.js`.
 13. Sample review: a landed step's commits are sampled at the trust rate; the Review tab shows the newest diff and records ok / fix-env (queued as a mistake) / revert. See `test/tui.test.js`.
 14. Hill-climb (`autopilot.hillClimb`, default 1): a judge scores the rubric, an improver works on the weakest criterion; kept only on a green gate and a higher score, undone otherwise. See `test/climb.test.js`.
+15. Workspace mode (a folder holding repos): a fullstack plan builds in parallel with a worktree per repo per step, each repo branched from its configured base (refused, naming the setting, when a repo has master and develop and none is set), merged per repo all-or-nothing; per-repo verify names the failing repo; init records each repo's steps; learned skills scoped to a repo live in it. See `test/workspace.test.js`, `test/repos.test.js`.
 
 Seeing it yourself: open the TUI in a scratch repo (`node <repo>/bin/wololo.js`) with `autopilot.command` pointed at a fake agent script that prints omp-style JSON events (copy one from the tests above). That runs autopilot end to end without sending anything to a model.
 

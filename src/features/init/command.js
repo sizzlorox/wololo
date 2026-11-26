@@ -1,4 +1,6 @@
 import { cpSync, existsSync } from 'node:fs';
+import { integrationBranches } from '../autopilot/branch.js';
+import { isWorkspace, listRepos } from '../../core/repos.js';
 import { join } from 'node:path';
 import { ADAPTERS } from '../../adapters/index.js';
 import { HARNESSES, loadConfig } from '../../core/config.js';
@@ -46,6 +48,28 @@ export const commands = [
       const configPath = join(root, CONFIG_FILE);
       const found = detect(root);
       const ask = input.yes ? undefined : ctx.prompt;
+      // A workspace (this folder holds repos, e.g. frontend/ and backend/): each repo verifies itself.
+      /** @type {Record<string, { verify?: import('../../core/config.js').VerifyStep[], base?: string }>} */
+      const perRepo = {};
+      for (const repo of isWorkspace(root) ? listRepos(root) : []) {
+        if (existsSync(join(root, repo, CONFIG_FILE))) continue; // it has its own wololo config: its steps are used
+        const steps = detect(join(root, repo)).steps;
+        if (steps.length) perRepo[repo] = { verify: steps };
+      }
+      // Where feature branches start, for each repo with more than one integration branch: never guessed.
+      /** @type {Record<string, string>} */
+      const bases = {};
+      /** @type {string[]} */
+      const undecided = [];
+      for (const repo of isWorkspace(root) ? listRepos(root) : ['.']) {
+        const candidates = integrationBranches(repo === '.' ? root : join(root, repo));
+        if (candidates.length < 2) continue;
+        const name = repo === '.' ? 'this repo' : repo;
+        const answer = ask ? (await ask(`${name} has ${candidates.join(' and ')}. Which branch do features start from?`, '')).trim() : '';
+        if (answer) bases[repo] = answer;
+        else undecided.push(repo === '.' ? 'autopilot.base' : `autopilot.repos.${repo}.base`);
+      }
+      for (const [repo, base] of Object.entries(bases)) if (repo !== '.') perRepo[repo] = { ...perRepo[repo], base };
       let harnesses = input.harness?.length ? input.harness.filter((/** @type {string} */ h) => /** @type {readonly string[]} */ (HARNESSES).includes(h)) : [...HARNESSES];
       if (ask && !input.harness?.length && (!existsSync(configPath) || input.force)) {
         harnesses = await interviewHarnesses(ask, detectHarnesses(root));
@@ -65,7 +89,7 @@ export const commands = [
           harnesses,
           verify: { steps: found.steps },
           gate: { minScore: 0.8 },
-          autopilot: { agent: headlessAgent(harnesses) ?? 'claude', verifiers: 1, maxIterations: 5 },
+          autopilot: { agent: headlessAgent(harnesses) ?? 'claude', verifiers: 1, maxIterations: 5, ...(bases['.'] ? { base: bases['.'] } : {}), ...(Object.keys(perRepo).length ? { repos: perRepo } : {}) },
           sources: [],
           ci: { provider: input.ci === 'none' ? 'none' : 'github', setup: found.setup },
         });
@@ -106,6 +130,8 @@ export const commands = [
       const config = loadConfig(root);
       const sync = runSync({ ...ctx, config, hasConfig: true }, { force: input.force });
       const nextSteps = [
+        ...undecided.map((key) => `set ${key}: the repo has more than one integration branch, and autopilot will not start until it knows which one features start from`),
+        ...Object.entries(perRepo).map(([repo, r]) => `workspace repo ${repo}: ${r.verify?.length ? `verify steps ${r.verify.map((x) => x.name).join(', ')}` : 'no verify steps detected'}${r.base ? `, features start from ${r.base}` : ''}`),
         found.steps.length ? `detected ${found.stack.join('+') || 'project'}: ${found.steps.map((s) => s.name).join(', ')} → review verify.steps in ${CONFIG_FILE}` : `no verify steps detected: add them to ${CONFIG_FILE} (nothing is verified until you do)`,
         ...(appFilled ? [] : ['finish .wololo/skills/verify-app/SKILL.md (or ask your agent: "explore the repo and fill in the verify-app skill"), then sync']),
         `run ${config.bin} doctor, then ${config.bin} gate`,

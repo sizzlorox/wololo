@@ -41,6 +41,24 @@ git add -A && git commit -m wololo
 
 Then use the TUI: run the gate on **Health**, add work on **Board**, press `n` on **Autopilot**. After editing `.wololo/`, run `wololo sync`.
 
+## Fullstack workspaces (several repos)
+
+Run wololo in a folder that is not a repo but holds repos, e.g. `frontend/` and `backend/`:
+
+```sh
+cd work           # contains frontend/ and backend/, each its own git repo
+wololo init       # finds each repo's test command
+wololo            # one plan, one board, across both
+```
+
+- **One plan across repos.** Steps list files by repo (`frontend/src/login.tsx`, `backend/api/auth.ts`); a fullstack step touches both.
+- **Branches per repo.** Each repo gets the same work branch (e.g. `feature/add-login`), cut from that repo's base. A repo with more than one integration branch (say `master` and `develop`, used for different things) must set it in `autopilot.repos.<repo>.base`: autopilot never guesses. A repo with just one branches from where it is. Protected branches are never committed to, in any repo.
+- **Verify per repo.** Each repo's checks run inside it (`autopilot.repos.<repo>.verify`, or the repo's own `wololo.config.json`) next to the workspace's own; a failure names the repo.
+- **Parallel steps** get a folder with a worktree of each repo, laid out like the workspace, plus its `AGENTS.md` and agent config. Merges happen per repo and are all-or-nothing: a step lands in every repo it changed, or in none.
+- **Learned skills** about one repo are stored and committed in that repo (`frontend/.wololo/learned/`); ones that span repos stay at workspace level.
+
+The workspace folder's own files (`wololo.config.json`, `.wololo/`, `AGENTS.md`) are not in any repo: keep them in a repo of their own if you want them versioned.
+
 ## TUI
 
 `wololo` opens it. Runs continue in the background after `q`. Switch tabs with `1`–`9`, `0` or `tab`; `?` lists every key on the current tab.
@@ -110,6 +128,8 @@ The Transcript tab shows what is sent: prompts, tool results (including file con
 | `learn` | auto | Learned skills: `auto`, `suggest` or `off` |
 | `hillClimb` | 1 | Rubric hill-climb rounds per step (0 = off) |
 | `protectedBranches` | main, master, develop, stage, release/*, … | Branches autopilot never commits to; runs started on one branch out |
+| `base` | – | Single repo: the branch features start from. Required when it has more than one of main/master/develop |
+| `repos` | – | Workspace mode, per repo: `base` (required when ambiguous, as above) and `verify` (its checks) |
 | `contextWindow` | – | Model context in tokens |
 | `maxIterations` | 5 | Fix/verify rounds per step |
 | `verifiers` | 1 | Verifier passes per green gate |

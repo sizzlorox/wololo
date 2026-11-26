@@ -12,7 +12,7 @@ import { readRuns } from '../autopilot/usage.js';
 import { enqueue } from '../queue/store.js';
 import { runSync } from '../sync/command.js';
 import { detect, normalizeCall } from './detect.js';
-import { baseRole, decide, learnedDir, listLearned, MAX_BODY, saveLearned } from './store.js';
+import { baseRole, decide, learnedPath, listLearned, MAX_BODY, saveLearned } from './store.js';
 
 /** Runs looked at for patterns: recent enough to reflect how the repo is built now. */
 const WINDOW = 80;
@@ -75,7 +75,8 @@ export function adopt(root, p, d, baselineTurns) {
   if (d.kind === 'script' && (typeof d.script !== 'string' || !d.script.trim() || !body.includes('{{script}}'))) return 'a script draft needs the script and {{script}} in its body';
   const strings = (/** @type {unknown} */ x) => (Array.isArray(x) ? x.filter((s) => typeof s === 'string' && s.trim()).map((s) => s.trim()) : []);
   const id = `${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40)}-${shortHash(p.key)}`;
-  const dir = join(learnedDir(root), id);
+  const files = strings(d.files);
+  const dir = learnedPath(root, /** @type {any} */ ({ id, trigger: { roles: [], files } }));
   if (d.kind === 'script') {
     ensureDir(dir);
     writeFileSync(join(dir, 'run.mjs'), d.script);
@@ -91,7 +92,7 @@ export function adopt(root, p, d, baselineTurns) {
     title: truncate(title, 60),
     kind: d.kind,
     body,
-    trigger: { roles: strings(d.roles).filter((r) => ROLES.includes(r)), files: strings(d.files) },
+    trigger: { roles: strings(d.roles).filter((r) => ROLES.includes(r)), files },
     status: 'trial',
     evidence: { calls: p.calls, runs: p.runs, tasks: p.tasks, baselineTurns },
     created: new Date().toISOString(),

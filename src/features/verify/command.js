@@ -1,5 +1,8 @@
+import { join } from 'node:path';
 import { sh } from '../../core/exec.js';
-import { recordEvent } from '../../core/state.js';
+import { readJson } from '../../core/files.js';
+import { isWorkspace, listRepos, repoDir } from '../../core/repos.js';
+import { CONFIG_FILE, recordEvent } from '../../core/state.js';
 import { tail } from '../../core/text.js';
 
 /**
@@ -7,23 +10,46 @@ import { tail } from '../../core/text.js';
  */
 
 /**
+ * Every verify step to run, with where to run it: the workspace's own steps at the root, and in a
+ * workspace each repo's steps inside that repo (autopilot.repos[repo].verify, else the repo's own
+ * wololo.config.json), named "repo: step" so a failure says which repo.
+ * @param {import('../../core/types.js').Ctx} ctx
+ * @returns {(import('../../core/config.js').VerifyStep & { cwd: string })[]}
+ */
+export function allSteps(ctx) {
+  const { config, root } = ctx;
+  const own = config.verify.steps.map((s) => ({ ...s, cwd: root }));
+  if (!isWorkspace(root)) return own;
+  return [
+    ...own,
+    ...listRepos(root).flatMap((repo) => {
+      const dir = repoDir(root, repo);
+      /** @type {import('../../core/config.js').VerifyStep[]} */
+      const steps = config.autopilot.repos?.[repo]?.verify ?? readJson(join(dir, CONFIG_FILE), /** @type {any} */ ({}))?.verify?.steps ?? [];
+      return steps.map((s) => ({ ...s, name: `${repo}: ${s.name}`, cwd: dir }));
+    }),
+  ];
+}
+
+/**
  * @param {import('../../core/types.js').Ctx} ctx
  * @param {{ fast?: boolean, steps?: string[], bail?: boolean, record?: boolean }} opts
  */
 export async function runVerify(ctx, opts) {
   const { config, root } = ctx;
-  let steps = config.verify.steps;
+  const every = allSteps(ctx);
+  let steps = every;
   if (opts.fast) steps = steps.filter((s) => s.fast);
   if (opts.steps?.length) steps = steps.filter((s) => opts.steps?.includes(s.name));
   /** @type {StepResult[]} */
   const results = [];
   for (const step of steps) {
-    const r = await sh(step.run, { cwd: root, timeoutMs: (step.timeoutSec ?? config.verify.timeoutSec) * 1000, env: { CI: '1', FORCE_COLOR: '0' } });
+    const r = await sh(step.run, { cwd: step.cwd, timeoutMs: (step.timeoutSec ?? config.verify.timeoutSec) * 1000, env: { CI: '1', FORCE_COLOR: '0' } });
     const ok = r.code === 0 && !r.timedOut;
     results.push({ name: step.name, ok, code: r.code, ms: r.ms, timedOut: r.timedOut, output: ok ? '' : tail(`${r.stdout}\n${r.stderr}`, 60) });
     if (!ok && opts.bail) break;
   }
-  const configured = config.verify.steps.length > 0;
+  const configured = every.length > 0;
   const ok = configured && steps.length > 0 && results.every((r) => r.ok);
   if (opts.record !== false) recordEvent(root, { type: 'verify', ok, fast: !!opts.fast, failed: results.filter((r) => !r.ok).map((r) => r.name) });
   return { ok, configured, results };

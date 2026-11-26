@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { gitOut } from '../../../core/git.js';
 import { age } from '../../../core/text.js';
 import { commands as reviewCommands } from '../../review/command.js';
@@ -26,7 +27,7 @@ export const reviewScreen = {
     const items = all.filter((i) => ui.filter === 'all' || i.status === 'pending').sort((a, b) => String(b.date).localeCompare(String(a.date)));
     ui.at = moveIn(ui.at ?? 0, 0, items.length);
     const item = items[ui.at];
-    if (item && !shown.has(item.sha)) shown.set(item.sha, gitOut(ctx.root, ['show', '--stat', '--patch', '--format=%H%n%an  %ci%n%n%B', item.sha]).split('\n'));
+    if (item && !shown.has(item.sha)) shown.set(item.sha, gitOut(item.repo ? join(ctx.root, item.repo) : ctx.root, ['show', '--stat', '--patch', '--format=%H%n%an  %ci%n%n%B', item.sha]).split('\n'));
     return { items, item, diff: item ? shown.get(item.sha) : [], trust: computeTrust(ctx.root), pending: all.filter((i) => i.status === 'pending').length };
   },
   keys(d) {
@@ -41,7 +42,7 @@ export const reviewScreen = {
     const t = d.trust;
     const head = ` ${c('1', `trust L${t.level}`)} ${c('2', `· sampling ${Math.round(t.sampleRate * 100)}% of commits · ${d.pending} waiting · ${ui.filter}`)}`;
     if (!d.items.length) return [head, ` ${c('2', ui.filter === 'pending' ? 'nothing to review · s samples new commits now' : 'no reviews yet')}`];
-    const rows = d.items.map((/** @type {import('../../review/store.js').Review} */ i) => `${c(MARK[i.status][0], MARK[i.status][1])} ${i.subject}  ${c('2', `${age(Date.now() - Date.parse(i.date))} ago`)}`);
+    const rows = d.items.map((/** @type {import('../../review/store.js').Review} */ i) => `${c(MARK[i.status][0], MARK[i.status][1])} ${i.repo ? c('36', `${i.repo}: `) : ''}${i.subject}  ${c('2', `${age(Date.now() - Date.parse(i.date))} ago`)}`);
     const paint = (/** @type {string} */ l) => (l.startsWith('+') && !l.startsWith('+++') ? c('32', l) : l.startsWith('-') && !l.startsWith('---') ? c('31', l) : l.startsWith('@@') ? c('36', l) : l);
     /** @type {import('../../review/store.js').Review} */
     const i = d.item;

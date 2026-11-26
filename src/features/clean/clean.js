@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { git, gitOut } from '../../core/git.js';
+import { listRepos, repoDir } from '../../core/repos.js';
 import { removeWorktree } from '../../core/worktree.js';
 import { rotate } from '../../core/rotate.js';
 import { statePath } from '../../core/state.js';
@@ -81,23 +82,38 @@ export function clean(root, opts = {}) {
     if (!t || t.status === 'done') remove(join(state, 'inbox', f), 'finished worker');
   }
 
-  // merged worktrees and branches
+  // merged worktrees and branches, in each repo (a workspace step has a worktree per repo)
   if (worktrees) {
-    if (!dryRun) git(root, ['worktree', 'prune']);
+    const repos = listRepos(root);
     const trees = join(dirname(root), `.${basename(root)}-wololo-worktrees`);
-    for (const branch of gitOut(root, ['branch', '--list', 'wololo/*', '--format=%(refname:short)']).split('\n').filter(Boolean)) {
-      if (git(root, ['merge-base', '--is-ancestor', branch, 'HEAD']).status !== 0) continue; // unmerged work: never
-      const id = branch.slice('wololo/'.length);
-      const dir = join(trees, id);
-      // A step that just started has a branch with no commits yet: "merged" to git, but running.
-      // Only a finished (or removed) step's worktree goes, and never one with uncommitted files.
-      const t = tasks.get(id);
-      if (t && t.status !== 'done') continue;
-      if (existsSync(dir) && gitOut(dir, ['status', '--porcelain'])) continue;
-      actions.push(`${dryRun ? 'would remove' : 'removed'} merged worktree and branch ${branch}`);
-      if (dryRun) continue;
-      if (existsSync(dir)) removeWorktree(root, dir);
-      git(root, ['branch', '-D', branch]);
+    for (const r of repos) {
+      const d = repoDir(root, r);
+      if (!dryRun) git(d, ['worktree', 'prune']);
+      for (const branch of gitOut(d, ['branch', '--list', 'wololo/*', '--format=%(refname:short)']).split('\n').filter(Boolean)) {
+        if (git(d, ['merge-base', '--is-ancestor', branch, 'HEAD']).status !== 0) continue; // unmerged work: never
+        const id = branch.slice('wololo/'.length);
+        const dir = r === '.' ? join(trees, id) : join(trees, id, r);
+        // A step that just started has a branch with no commits yet: "merged" to git, but running.
+        // Only a finished (or removed) step's worktree goes, and never one with uncommitted files.
+        const t = tasks.get(id);
+        if (t && t.status !== 'done') continue;
+        if (existsSync(dir) && gitOut(dir, ['status', '--porcelain'])) continue;
+        actions.push(`${dryRun ? 'would remove' : 'removed'} merged worktree and branch ${branch}${r === '.' ? '' : ` in ${r}`}`);
+        if (dryRun) continue;
+        if (existsSync(dir)) removeWorktree(d, dir);
+        git(d, ['branch', '-D', branch]);
+      }
+    }
+    // a workspace step folder whose repo worktrees are all gone
+    if (repos[0] !== '.' && !dryRun) {
+      for (const id of ls(trees)) {
+        const dir = join(trees, id);
+        if (repos.some((r) => existsSync(join(dir, r)))) continue;
+        const t = tasks.get(id);
+        if (t && t.status !== 'done') continue;
+        removeWorktree(root, dir);
+        actions.push(`removed empty step folder ${id}`);
+      }
     }
   }
   return { freed, actions };

@@ -1,24 +1,36 @@
-import { git } from '../../core/git.js';
+import { git, gitOut } from '../../core/git.js';
+import { listRepos, repoDir } from '../../core/repos.js';
 import { enqueue } from '../queue/store.js';
 import { computeTrust } from '../trust/compute.js';
 import { readReviews, sampled, writeReviews } from './store.js';
 
 /**
+ * Commits to taste, newest first: one repo's, or every repo's in a workspace (with `repo` set).
  * @param {string} root
- * @param {string | undefined} since
+ * @param {string | undefined | Record<string, string>} since  a sha, or per repo in a workspace
  */
 function commits(root, since) {
-  const range = since ? [`${since}..HEAD`] : ['-n', '50', 'HEAD'];
-  const r = git(root, ['log', '--no-merges', '--format=%H%x1f%an%x1f%s%x1f%cI', ...range]);
-  if (r.status !== 0) return [];
-  return r.stdout
-    .split('\n')
-    .filter(Boolean)
-    .map((l) => {
-      const [sha, author, subject, date] = l.split('\x1f');
-      return { sha, author, subject, date };
-    });
+  return listRepos(root).flatMap((repo) => {
+    const from = typeof since === 'string' ? since : since?.[repo];
+    const range = from ? [`${from}..HEAD`] : ['-n', '50', 'HEAD'];
+    const r = git(repoDir(root, repo), ['log', '--no-merges', '--format=%H%x1f%an%x1f%s%x1f%cI', ...range]);
+    if (r.status !== 0) return [];
+    return r.stdout
+      .split('\n')
+      .filter(Boolean)
+      .map((l) => {
+        const [sha, author, subject, date] = l.split('\x1f');
+        return { sha, author, subject, date, ...(repo === '.' ? {} : { repo }) };
+      });
+  }).sort((x, y) => String(y.date).localeCompare(String(x.date)));
 }
+
+/** Where each repo's newest commit is, to sample after next time. @param {string} root */
+const cursorOf = (root) => {
+  const repos = listRepos(root);
+  if (repos.length === 1 && repos[0] === '.') return gitOut(root, ['rev-parse', 'HEAD']);
+  return Object.fromEntries(repos.map((r) => [r, gitOut(repoDir(root, r), ['rev-parse', 'HEAD'])]));
+};
 
 /**
  * Put new commits up for tasting at the trust ladder's rate (never zero). Autopilot calls this after
@@ -36,7 +48,7 @@ export function sampleCommits(root, opts = {}) {
   if (!picked.length && fresh.length) picked = [fresh.reduce((a, b) => (parseInt(a.sha.slice(0, 8), 16) <= parseInt(b.sha.slice(0, 8), 16) ? a : b))];
   const now = new Date().toISOString();
   state.items.push(...picked.map((c) => ({ ...c, status: /** @type {const} */ ('pending'), sampledAt: now })));
-  if (list.length) state.cursor = list[0].sha;
+  if (list.length) state.cursor = /** @type {any} */ (cursorOf(root));
   writeReviews(root, state);
   return { picked, fresh: fresh.length, rate };
 }

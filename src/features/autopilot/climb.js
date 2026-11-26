@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { diffHint } from '../../core/repos.js';
 import { ensureDir } from '../../core/files.js';
-import { git, gitOut } from '../../core/git.js';
+import { commitAll, heads, resetTo } from '../../core/repos.js';
 import { recordEvent, statePath } from '../../core/state.js';
 import { runGate } from '../gate/command.js';
 import { loadRubric, runScore } from '../score/command.js';
@@ -22,7 +23,7 @@ export function judgePrompt(bin, goal, base, questions, path) {
     'Step:',
     goal,
     '',
-    `The change: \`git diff ${base}\` (commits since ${base.slice(0, 12)} plus the working tree).`,
+    `The change: ${diffHint(base)} (its commits plus the working tree).`,
     '',
     'Questions:',
     ...questions.map((q) => `- ${q.id}: ${q.question ?? q.id}`),
@@ -84,14 +85,10 @@ export async function hillClimb(ctx, o) {
   /** Everything as it is now, committed: what a round is undone to. */
   const checkpoint = (/** @type {string} */ what) => {
     if (protectedHere(root, config.autopilot.protectedBranches)) throw new Error(protectedHere(root, config.autopilot.protectedBranches));
-    git(root, ['add', '-A', '--', '.', ':(exclude).wololo/state']);
-    git(root, ['commit', '-q', '--no-verify', '-m', `${o.title} (autopilot: ${what})`]);
-    return gitOut(root, ['rev-parse', 'HEAD']);
+    commitAll(root, `${o.title} (autopilot: ${what})`);
+    return heads(root);
   };
-  const undo = (/** @type {string} */ sha) => {
-    git(root, ['reset', '-q', '--hard', sha]);
-    git(root, ['clean', '-fdq']); // .wololo/state is gitignored: clean leaves it
-  };
+  const undo = (/** @type {string} */ at) => resetTo(root, at);
 
   let verdict = await judge();
   let score = await runScore(ctx, { judge: verdict.scores, record: false });

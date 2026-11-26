@@ -15,7 +15,7 @@ import { plan } from './plan.js';
 import { runWorker } from './worker.js';
 import { tasteSample } from './taste.js';
 import { clean } from '../clean/clean.js';
-import { ensureBranch, rememberBranch } from './branch.js';
+import { ensureBranch, rememberBranch, repoBases } from './branch.js';
 import { buildGroup } from './review.js';
 import { builderPrompt, fixerPrompt, plannerPrompt, VERIFIER_FOCUS, verifierPrompt } from './prompts.js';
 
@@ -82,10 +82,9 @@ export const commands = [
         if (tidy.actions.length) log(`housekeeping: freed ${(tidy.freed / 1024 / 1024).toFixed(1)}MB (${tidy.actions.length} action(s); wololo clean --dry-run shows what it does)`);
       }
       if (!process.env.WOLOLO_WORKER) {
-        const on = ensureBranch(root, goal ?? input.group ?? 'autopilot', { key: input.group ?? task?.group, patterns: config.autopilot.protectedBranches });
+        const on = ensureBranch(root, goal ?? input.group ?? 'autopilot', { key: input.group ?? task?.group, patterns: config.autopilot.protectedBranches, bases: repoBases(config) });
         if ('error' in on) return { ok: false, summary: `autopilot never commits to a protected branch, and could not leave this one: ${on.error}`, exitCode: 2 };
-        if (on.created) log(`${on.from === 'a detached HEAD' ? 'HEAD was detached' : `${on.from} is protected`}: created branch ${on.branch}; the work lands there`);
-        if (on.switched) log(`${on.from === 'a detached HEAD' ? 'HEAD was detached' : `${on.from} is protected`}: switched to ${on.branch}, this plan's branch`);
+        for (const note of on.notes) log(note);
       }
       startStatus(root, { goal, group: input.group, task: task && { id: task.id, title: task.title, started: new Date().toISOString() }, contextWindow: window, agentCli: agent, workers: config.autopilot.workers ?? 1, version: VERSION, stallMinutes: config.autopilot.stallMinutes ?? DEFAULT_STALL_MINUTES });
       log(`watch it live: ${config.bin} watch`);

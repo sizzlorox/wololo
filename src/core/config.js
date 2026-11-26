@@ -30,7 +30,7 @@ export const HARNESSES = /** @type {const} */ (['claude', 'codex', 'copilot', 'c
  * @property {string[]} ignore
  * @property {{ steps: VerifyStep[], timeoutSec: number }} verify
  * @property {{ minScore: number, requireJudgment: boolean }} gate
- * @property {{ agent: string, command?: string[], verifiers: number, maxIterations: number, workers?: number, models?: Record<string, string>, learn?: 'auto' | 'suggest' | 'off', hillClimb?: number, protectedBranches?: string[], mergeCommand: string, contextWindow?: number, stuckAfter?: number, agentTimeoutMinutes?: number, stallMinutes?: number, gapRounds?: number, thinking?: string }} autopilot
+ * @property {{ agent: string, command?: string[], verifiers: number, maxIterations: number, workers?: number, models?: Record<string, string>, learn?: 'auto' | 'suggest' | 'off', hillClimb?: number, protectedBranches?: string[], base?: string, repos?: Record<string, { base?: string, verify?: VerifyStep[] }>, mergeCommand: string, contextWindow?: number, stuckAfter?: number, agentTimeoutMinutes?: number, stallMinutes?: number, gapRounds?: number, thinking?: string }} autopilot
  * @property {{ tools?: string[] }} [mcp]
  * @property {Source[]} sources
  * @property {{ provider: 'github' | 'none', setup: string[] }} ci
@@ -60,9 +60,10 @@ export function findRoot(cwd) {
   for (;;) {
     if (existsSync(join(dir, CONFIG_FILE))) return { root: dir, hasConfig: true };
     if (process.env.WOLOLO_CONFIG && dir === resolve(cwd)) {
-      // a parallel worker's worktree: the main repo's config applies
+      // a parallel worker: the main repo's config applies. Its root is the worktree, or for a
+      // workspace the step folder holding a worktree per repo (not a repo itself).
       const top = git(cwd, ['rev-parse', '--show-toplevel']);
-      if (top.status === 0) return { root: resolve(top.stdout.trim()), hasConfig: true };
+      return { root: top.status === 0 ? resolve(top.stdout.trim()) : resolve(cwd), hasConfig: true };
     }
     const up = dirname(dir);
     if (up === dir) break;
