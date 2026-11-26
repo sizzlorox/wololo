@@ -1,4 +1,5 @@
 import { onPath } from '../../core/exec.js';
+import { gitOut } from '../../core/git.js';
 import { launch } from '../watch/actions.js';
 
 import { readTask } from '../board/store.js';
@@ -14,6 +15,7 @@ import { plan } from './plan.js';
 import { runWorker } from './worker.js';
 import { tasteSample } from './taste.js';
 import { clean } from '../clean/clean.js';
+import { ensureBranch, rememberBranch } from './branch.js';
 import { buildGroup } from './review.js';
 import { builderPrompt, fixerPrompt, plannerPrompt, VERIFIER_FOCUS, verifierPrompt } from './prompts.js';
 
@@ -79,6 +81,12 @@ export const commands = [
         const tidy = clean(root);
         if (tidy.actions.length) log(`housekeeping: freed ${(tidy.freed / 1024 / 1024).toFixed(1)}MB (${tidy.actions.length} action(s); wololo clean --dry-run shows what it does)`);
       }
+      if (!process.env.WOLOLO_WORKER) {
+        const on = ensureBranch(root, goal ?? input.group ?? 'autopilot', { key: input.group ?? task?.group, patterns: config.autopilot.protectedBranches });
+        if ('error' in on) return { ok: false, summary: `autopilot never commits to a protected branch, and could not leave this one: ${on.error}`, exitCode: 2 };
+        if (on.created) log(`${on.from === 'a detached HEAD' ? 'HEAD was detached' : `${on.from} is protected`}: created branch ${on.branch}; the work lands there`);
+        if (on.switched) log(`${on.from === 'a detached HEAD' ? 'HEAD was detached' : `${on.from} is protected`}: switched to ${on.branch}, this plan's branch`);
+      }
       startStatus(root, { goal, group: input.group, task: task && { id: task.id, title: task.title, started: new Date().toISOString() }, contextWindow: window, agentCli: agent, workers: config.autopilot.workers ?? 1, version: VERSION, stallMinutes: config.autopilot.stallMinutes ?? DEFAULT_STALL_MINUTES });
       log(`watch it live: ${config.bin} watch`);
       for (const problem of checkMcpFiles(ctx.root)) log(`warning: ${problem}`);
@@ -87,6 +95,7 @@ export const commands = [
           const planned = await plan(ctx, agent, goal);
           if (!planned.ok) return { ok: false, summary: `planning failed: ${planned.error}` };
           setStatus(root, { group: planned.group });
+          rememberBranch(root, planned.group, gitOut(root, ['rev-parse', '--abbrev-ref', 'HEAD']));
           return buildGroup(ctx, planned.group, opts);
         }
         if (input.group) return buildGroup(ctx, input.group, opts);

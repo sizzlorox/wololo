@@ -20,6 +20,7 @@ import { overlaps } from './areas.js';
 export { overlaps };
 import { annotate } from './annotate.js';
 import { addSeam, afterSeam, hotspot } from './seam.js';
+import { ensureBranch, protectedHere } from './branch.js';
 
 export { hotspot };
 import { learn } from '../learn/learn.js';
@@ -131,8 +132,13 @@ export async function runParallel(ctx, group, opts) {
   process.env.WOLOLO_CONFIG = join(root, CONFIG_FILE);
   const all = () => readTasks(root).filter((t) => t.group === group).sort((a, b) => order(a) - order(b) || a.created.localeCompare(b.created));
   if (!all().length) return { ok: false, summary: `no tasks in group ${group}` };
-  const main = git(root, ['rev-parse', '--abbrev-ref', 'HEAD']).stdout.trim();
-  if (!main || main === 'HEAD') return { ok: false, summary: 'parallel autopilot needs a checked-out branch to merge into (HEAD is detached)' };
+  // Steps merge into the checked-out branch. On a detached HEAD, make one for this plan, named
+  // the way the repo names branches (feature/…, fix/…), so the work lands somewhere you can find.
+  const goal = all().find((t) => t.goal)?.goal ?? group;
+  const on = ensureBranch(root, goal, { key: group, patterns: ctx.config.autopilot.protectedBranches });
+  if ('error' in on) return { ok: false, summary: `parallel autopilot never merges into a protected branch: ${on.error}` };
+  if (on.created || on.switched) log(`steps merge into ${on.branch}`);
+  const main = on.branch;
   const trees = join(dirname(root), `.${basename(root)}-wololo-worktrees`);
   const entry = process.argv[1];
 
@@ -266,6 +272,12 @@ export async function runParallel(ctx, group, opts) {
       publish();
     };
     for (let attempt = 0; attempt <= MERGE_ATTEMPTS; attempt++) {
+      const guard = protectedHere(root, ctx.config.autopilot.protectedBranches);
+      if (guard) {
+        state(guard);
+        log(`${t.title}: ${guard}`);
+        break;
+      }
       state(attempt ? `merging (attempt ${attempt + 1})` : 'merging');
       // Uncommitted work in the main checkout (a settings change, files a build regenerated) is
       // committed first, so neither the merge nor undoing it can touch it.

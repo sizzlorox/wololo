@@ -12,6 +12,7 @@ import { CONTEXT_LOOP, OUTPUT_CAP, OUTPUT_CAP_FIX, runAgent } from './agent.js';
 import { agentArgv } from './argv.js';
 import { learnedFor } from '../learn/store.js';
 import { hillClimb } from './climb.js';
+import { protectedHere } from './branch.js';
 
 const board = Object.fromEntries(boardCommands.map((c) => [c.name, c]));
 
@@ -181,6 +182,8 @@ export async function runLoop(ctx, opts) {
   const land = async (i, caveat) => {
     // The gate verified the working tree, not HEAD: commit it, or the next builder inherits a dirty tree it has to re-read.
     const left = dirtyFiles(root);
+    const guard = protectedHere(root, config.autopilot.protectedBranches);
+    if (guard) return fail(guard, { iterations: i, findings });
     if (left.length) {
       const title = (task?.title ?? opts.goal?.split('\n')[0] ?? 'autopilot').slice(0, 100);
       git(root, ['add', '-A', '--', '.', ':(exclude).wololo/state']);

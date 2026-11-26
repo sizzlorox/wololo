@@ -72,6 +72,8 @@ After each step lands, a share of its commits is sampled for you to review (the 
 
 It stops when stuck and blocks that step; press `r` to retry or `s` to skip. Resume with `r` after any stop or crash.
 
+**It never commits to `main`, `master`, `develop`, `stage`, `release/*` or similar.** A run started on one of those branches out first: a new branch named the way the repo names branches (`feature/…`, `fix/…`, `perf/…`), or, when resuming a plan, that plan's branch. The same happens on a detached HEAD. Before every commit and merge it checks again, so an agent that switches back to `main` mid-run cannot get its work committed there. Set your own list in `autopilot.protectedBranches`.
+
 Headless agents run with full permissions (e.g. Claude `bypassPermissions`). Use autopilot only on code and machines you're willing to let an agent change.
 
 **Parallel:** set `autopilot.workers` > 1.
@@ -107,6 +109,7 @@ The Transcript tab shows what is sent: prompts, tool results (including file con
 | `workers` | 1 | Steps built at once |
 | `learn` | auto | Learned skills: `auto`, `suggest` or `off` |
 | `hillClimb` | 1 | Rubric hill-climb rounds per step (0 = off) |
+| `protectedBranches` | main, master, develop, stage, release/*, … | Branches autopilot never commits to; runs started on one branch out |
 | `contextWindow` | – | Model context in tokens |
 | `maxIterations` | 5 | Fix/verify rounds per step |
 | `verifiers` | 1 | Verifier passes per green gate |

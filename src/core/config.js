@@ -30,7 +30,7 @@ export const HARNESSES = /** @type {const} */ (['claude', 'codex', 'copilot', 'c
  * @property {string[]} ignore
  * @property {{ steps: VerifyStep[], timeoutSec: number }} verify
  * @property {{ minScore: number, requireJudgment: boolean }} gate
- * @property {{ agent: string, command?: string[], verifiers: number, maxIterations: number, workers?: number, models?: Record<string, string>, learn?: 'auto' | 'suggest' | 'off', hillClimb?: number, mergeCommand: string, contextWindow?: number, stuckAfter?: number, agentTimeoutMinutes?: number, stallMinutes?: number, gapRounds?: number, thinking?: string }} autopilot
+ * @property {{ agent: string, command?: string[], verifiers: number, maxIterations: number, workers?: number, models?: Record<string, string>, learn?: 'auto' | 'suggest' | 'off', hillClimb?: number, protectedBranches?: string[], mergeCommand: string, contextWindow?: number, stuckAfter?: number, agentTimeoutMinutes?: number, stallMinutes?: number, gapRounds?: number, thinking?: string }} autopilot
  * @property {{ tools?: string[] }} [mcp]
  * @property {Source[]} sources
  * @property {{ provider: 'github' | 'none', setup: string[] }} ci

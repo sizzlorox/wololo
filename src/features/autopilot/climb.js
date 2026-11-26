@@ -4,6 +4,7 @@ import { git, gitOut } from '../../core/git.js';
 import { recordEvent, statePath } from '../../core/state.js';
 import { runGate } from '../gate/command.js';
 import { loadRubric, runScore } from '../score/command.js';
+import { protectedHere } from './branch.js';
 
 /** Good enough: stop climbing. ponytail: fixed; make it a setting if repos need a different bar */
 const TARGET = 0.95;
@@ -82,6 +83,7 @@ export async function hillClimb(ctx, o) {
   };
   /** Everything as it is now, committed: what a round is undone to. */
   const checkpoint = (/** @type {string} */ what) => {
+    if (protectedHere(root, config.autopilot.protectedBranches)) throw new Error(protectedHere(root, config.autopilot.protectedBranches));
     git(root, ['add', '-A', '--', '.', ':(exclude).wololo/state']);
     git(root, ['commit', '-q', '--no-verify', '-m', `${o.title} (autopilot: ${what})`]);
     return gitOut(root, ['rev-parse', 'HEAD']);
