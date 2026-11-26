@@ -12,6 +12,7 @@ import { statePath } from '../../core/state.js';
  * @property {'todo' | 'claimed' | 'blocked' | 'done'} status
  * @property {string} [agent]
  * @property {string} [blockedOn]   Who/what is needed. "human" counts toward the bottleneck report.
+ * @property {string} [blockedWhy]  Why it is blocked, and usually what to do about it.
  * @property {string[]} queue
  * @property {string[]} notes
  * @property {number} [seq]       Position in a plan (autopilot --plan builds tasks in this order).
@@ -72,4 +73,15 @@ export function unlock(root, id) {
 export function removeTask(root, id) {
   rmSync(join(dir(root), `${id}.json`), { force: true });
   unlock(root, id);
+}
+
+/**
+ * Why a task is blocked: its stored reason, or for older tasks the last "blocked:" note. Without
+ * the "autopilot:" prefix every autopilot reason starts with.
+ * @param {Task} t
+ */
+export function blockReason(t) {
+  if (t.blockedWhy) return t.blockedWhy;
+  const note = [...t.notes].reverse().find((n) => n.includes(' blocked: '));
+  return note ? note.split(' blocked: ').slice(1).join(' blocked: ').replace(/^autopilot: /, '') : '';
 }

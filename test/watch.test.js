@@ -82,7 +82,7 @@ test('watch shows the plan, the agent with gauges, the repo, run stats and a fee
   assert.match(out, /⑂ Step 1a {2}split into 1/);
   assert.match(out, / {4}✓ Step 1a-s1/, 'sub-steps are indented under their parent');
   assert.match(out, /▶ Step 2 +8m/, 'the current step shows how long it has run');
-  assert.match(out, /✗ Step 4 \(blocked on human\)/);
+  assert.match(out, /✗ Step 4 +blocked on human/, 'a step with no stored reason still says what it waits on');
 
   assert.match(out, /Agent · fixer/);
   assert.match(out, /time +[█░]+ 12m \/ 45m/);

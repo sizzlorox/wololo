@@ -199,3 +199,29 @@ if (prompt.includes('You are the planner')) {
   assert.equal(git(['rev-parse', '--abbrev-ref', 'HEAD']).stdout.trim(), 'feat/add-a-greeting-system');
   assert.ok(existsSync(join(repo, 'alpha.js')), 'the step merged into the new branch');
 });
+
+test('a merge that never succeeds is blocked saying why: which files conflict, and where the work is kept', async () => {
+  const { readTask } = await import('../src/features/board/store.js');
+  // two steps write the same file; the merger gives up without resolving anything
+  writeFileSync(join(scratch, 'agent.cjs'), String.raw`
+const fs = require('node:fs');
+const { execSync } = require('node:child_process');
+const prompt = process.argv[2];
+fs.appendFileSync(process.env.PROMPT_LOG, JSON.stringify(prompt) + '\n');
+if (prompt.includes('You are the planner')) {
+  const path = /Write the plan to (\S+)/.exec(prompt)[1];
+  fs.writeFileSync(path, JSON.stringify({ tasks: [{ title: 'Write one', body: 'a', deps: [], touches: ['one.js'] }, { title: 'Write two', body: 'b', deps: [], touches: ['two.js'] }] }));
+} else if (prompt.includes('You are the builder')) {
+  const n = /Write (\w+)/.exec(prompt.split('Implement this feature:')[1])[1];
+  fs.writeFileSync('shared.txt', 'from ' + n + '\n');
+  execSync('git add -A && git commit -qm "feat: ' + n + '"');
+}
+`);
+  setup({ workers: 2, gapRounds: 0, verifiers: 0, hillClimb: 0, base: 'master' });
+  const r = wololo(['autopilot', '--goal', 'two writers', '--plan']);
+  assert.notEqual(r.code, 0);
+  const group = /** @type {string} */ (/plan-[\w-]+/.exec(r.out + r.err)?.[0]);
+  const blocked = ['01', '02'].map((n) => readTask(repo, `${group}-${n}`)).find((t) => t?.status === 'blocked');
+  assert.ok(blocked, 'one of the two is blocked');
+  assert.match(blocked?.blockedWhy ?? '', /could not merge into .*: conflicts in shared\.txt\. Tried 3 times, a merger agent in between\. The work is kept on wololo\//);
+});

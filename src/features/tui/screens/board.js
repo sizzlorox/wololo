@@ -1,5 +1,5 @@
 import { commands as boardCommands } from '../../board/command.js';
-import { readTask, readTasks, writeTask } from '../../board/store.js';
+import { blockReason, readTask, readTasks, writeTask } from '../../board/store.js';
 import { readStatus } from '../../autopilot/status.js';
 import { age } from '../../../core/text.js';
 import { listDetail, moveIn } from '../layout.js';
@@ -58,6 +58,7 @@ export const boardScreen = {
     const detail = t
       ? [
           c('1', t.title),
+          ...(t.status === 'blocked' && blockReason(t) ? [c('31', `blocked: ${blockReason(t)}`)] : []),
           `${t.status === 'blocked' ? c('31', `blocked on ${t.blockedOn ?? '?'}`) : t.status}${t.agent ? ` · ${t.agent}` : ''} · updated ${age(Date.now() - Date.parse(t.updated))} ago`,
           c('2', `${t.id}${t.seq !== undefined ? ` · step ${t.seq}` : ''}${t.splitInto?.length ? ` · split into ${t.splitInto.length}` : ''}${t.splitDepth ? ` · split depth ${t.splitDepth}` : ''}`),
           ...(t.deps?.length ? [`needs   ${t.deps.map((id) => { const dep = d.all.find((/** @type {any} */ x) => x.id === id); return dep ? `${dep.status === 'done' ? '✓' : '·'} ${dep.title}` : id; }).join(', ')}`] : []),

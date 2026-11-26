@@ -114,3 +114,20 @@ test('wrap never loops on a line indented wider than the pane (deep JSON in a to
   assert.match(out.join(' '), /several words/, 'nothing is lost');
   assert.ok(wrap('x'.repeat(500), 6).length <= 100, 'a long word at a tiny width is cut, not looped on');
 });
+
+test('blocked steps say why: next to the step, in a "Needs you" panel with what to do, and in its details', async () => {
+  const { render, details } = await import('../src/features/watch/render.js');
+  const { blockReason } = await import('../src/features/board/store.js');
+  const why = 'the builder kept waiting on `npx vitest run tests/m4.test.ts`, which takes longer than an agent may run';
+  const blocked = /** @type {any} */ ({ id: 'g-02', title: 'Run the year-40 check', status: 'blocked', blockedOn: 'human', blockedWhy: why, group: 'g', notes: [] });
+  const legacy = /** @type {any} */ ({ id: 'g-03', title: 'Old step', status: 'blocked', blockedOn: 'human', group: 'g', notes: ['2026-11-25T10:00:00.000Z blocked: autopilot: did not converge in 5 iterations'] });
+  assert.equal(blockReason(blocked), why);
+  assert.equal(blockReason(legacy), 'did not converge in 5 iterations', 'older steps: read from the notes, without the "autopilot:" prefix');
+  const status = /** @type {any} */ ({ pid: 1, started: new Date().toISOString(), state: 'stopped', group: 'g', activity: [] });
+  const out = render({ status, tasks: [{ id: 'g-01', title: 'Done', status: 'done', group: 'g', notes: [] }, blocked, legacy], alive: false, now: Date.now(), width: 160, height: 50, color: false });
+  assert.match(out, /✗ Run the year-40 check +the builder kept waiting on/, 'next to the step in the plan');
+  assert.match(out, /Needs you · 2 blocked/);
+  assert.match(out, /Run the year-40 check[\s\S]*takes longer than an agent may run/, 'the full reason in the panel');
+  assert.match(out, /r retry · s skip · enter details/);
+  assert.match(details(blocked, 100, 20), /blocked: the builder kept waiting on/);
+});

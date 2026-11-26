@@ -110,6 +110,7 @@ export const commands = [
       return update(ctx, input.id, (t) => {
         t.status = 'blocked';
         t.blockedOn = input.on;
+        t.blockedWhy = input.reason ? String(input.reason).replace(/^autopilot: /, '') : undefined;
         if (input.reason) t.notes.push(`${new Date().toISOString()} blocked: ${input.reason}`);
       });
     },
@@ -124,6 +125,7 @@ export const commands = [
       const r = update(ctx, input.id, (t) => {
         t.status = 'done';
         t.blockedOn = undefined;
+        t.blockedWhy = undefined;
         if (input.note) t.notes.push(`${new Date().toISOString()} done: ${input.note}`);
       });
       if (r.ok) {
@@ -145,6 +147,7 @@ export const commands = [
         t.status = 'todo';
         t.agent = undefined;
         t.blockedOn = undefined;
+        t.blockedWhy = undefined;
       });
     },
   },

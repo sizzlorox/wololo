@@ -217,6 +217,8 @@ export async function runParallel(ctx, group, opts) {
       mergeState[id] = s;
       publish();
     };
+    /** What went wrong on the last attempt, for the human who has to finish it. */
+    let last = '';
     for (let attempt = 0; attempt <= MERGE_ATTEMPTS; attempt++) {
       const guard = protectedHere(root, ctx.config.autopilot.protectedBranches);
       if (guard) {
@@ -253,6 +255,8 @@ export async function runParallel(ctx, group, opts) {
         break;
       }
       if (refused || problem) resetTo(root, before); // a step lands in every repo or in none
+      if (problem) last = problem.conflicts.length ? `conflicts in ${problem.conflicts.slice(0, 5).join(', ')}${problem.conflicts.length > 5 ? ', …' : ''}` : `the merged result fails the gate (${(problem.failures ?? '').split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 2).join('; ').slice(0, 160)})`;
+      if (refused) last = `git would not start the merge: ${refused}`;
       if (refused) {
         // the merge never started and committing local changes did not help: nothing an agent can fix
         state(`could not start the merge: ${refused}`);
@@ -300,7 +304,7 @@ export async function runParallel(ctx, group, opts) {
       await runLoop(wctx, { agent: opts.agent, focuses: [], max: opts.max });
     }
     recordEvent(root, { type: 'merge', ok: false, task: id });
-    await board['task block'].run({ id, on: 'human', reason: `autopilot: could not merge into ${main} after ${MERGE_ATTEMPTS + 1} attempts; the branch ${branch} and worktree ${dir} are kept` }, ctx);
+    await board['task block'].run({ id, on: 'human', reason: `autopilot: could not merge into ${main}${last ? `: ${last}` : ''}. Tried ${MERGE_ATTEMPTS + 1} times, a merger agent in between. The work is kept on ${branch} (worktree ${dir}): merge it by hand, or press r to build the step again` }, ctx);
     log(`could not merge ${t.title}; blocked on a human`);
     return false;
   };

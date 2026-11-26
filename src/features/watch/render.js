@@ -1,4 +1,6 @@
 import { bar, box, columns, fit, pad, painter, plural, width } from './widgets.js';
+import { blockReason } from '../board/store.js';
+import { wrap as wrapText } from '../tui/layout.js';
 
 /**
  * Render one frame of `wololo watch`. Pure: everything it shows comes in through `view`, so the
@@ -86,6 +88,14 @@ export function render(v) {
 
   const lines = [...top, ...panels];
   // what the parallel agents said to each other
+  // what is waiting on you, with why and what to press: a blocked step is the one thing autopilot cannot do
+  const stuck = v.tasks.filter((t) => t.status === 'blocked');
+  if (stuck.length) {
+    const body = stuck.slice(0, 4).flatMap((t) => [`${c('31', '✗')} ${c('1', t.title)}`, ...wrapText(blockReason(t) || `blocked on ${t.blockedOn ?? '?'}`, v.width - 8).map((l) => `  ${l}`)]);
+    if (stuck.length > 4) body.push(c('2', `… ${stuck.length - 4} more on the Board tab`));
+    body.push(c('2', 'r retry · s skip · enter details (pick the step with ↑↓) · Board tab: e edit the step'));
+    lines.push(...box(`Needs you · ${stuck.length} blocked`, body, v.width, c));
+  }
   const said = (v.inbox ?? []).filter((m) => m.from !== 'wololo' || /merged|started/.test(m.text));
   if (said.length && v.height - lines.length > 12) {
     const n = Math.min(said.length, Math.max(3, Math.floor((v.height - lines.length) / 3)));
@@ -138,7 +148,7 @@ function planBody(v, c, inner, room) {
     const indent = '  '.repeat(t.splitDepth ?? 0);
     let tail = '';
     if (t.splitInto?.length) tail = c('2', `  split into ${t.splitInto.length}`);
-    else if (t.status === 'blocked') tail = c('31', ` (blocked on ${t.blockedOn ?? '?'})`);
+    else if (t.status === 'blocked') tail = c('31', `  ${blockReason(t) || `blocked on ${t.blockedOn ?? '?'}`}`);
     else if (s.parallel?.waiting?.[t.id] && v.alive) tail = c('2', `  ${s.parallel.waiting[t.id]}`);
     else if (now && s.task?.started) tail = c('33', `  ${duration(v.now - Date.parse(s.task.started))}`);
     const pick = t.id === v.selected;
@@ -219,7 +229,8 @@ function runBody(stats) {
  */
 export function details(t, w, h) {
   const state = t.status === 'blocked' ? `blocked on ${t.blockedOn ?? '?'}` : t.status;
-  const head = [` ${t.title}`, ` ${state} · ${t.id}${t.agent ? ` · ${t.agent}` : ''}`, ...(t.deps?.length ? [` needs: ${t.deps.join(', ')}`] : []), ...(t.touches?.length ? [` changes: ${t.touches.join(', ')}`] : []), ''];
+  const why = t.status === 'blocked' ? blockReason(t) : '';
+  const head = [` ${t.title}`, ` ${state} · ${t.id}${t.agent ? ` · ${t.agent}` : ''}`, ...(why ? wrapText(`blocked: ${why}`, w - 2).map((l) => ` ${l}`) : []), ...(t.deps?.length ? [` needs: ${t.deps.join(', ')}`] : []), ...(t.touches?.length ? [` changes: ${t.touches.join(', ')}`] : []), ''];
   const body = (t.body || '(no description)').split('\n').map((l) => ` ${l}`);
   const notes = t.notes.length ? ['', ' notes:', ...t.notes.map((n) => `  ${n}`)] : [];
   const foot = ['', ' esc back'];
