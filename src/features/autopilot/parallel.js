@@ -1,5 +1,6 @@
 import { spawn } from '../../core/proc.js';
-import { git } from '../../core/git.js';
+import { git, gitOut } from '../../core/git.js';
+import { removeWorktree } from '../../core/worktree.js';
 import { existsSync, mkdirSync, openSync, symlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { CONFIG_FILE, recordEvent, statePath } from '../../core/state.js';
@@ -201,6 +202,12 @@ export async function runParallel(ctx, group, opts) {
   const start = (t) => {
     const dir = dirOf(t.id);
     const branch = branchOf(t.id);
+    // A folder left behind is not a worktree: Windows can keep a removed worktree's folder (a process
+    // still had a file open), and a worker started in it works outside git, in the main checkout.
+    if (existsSync(dir) && gitOut(dir, ['rev-parse', '--abbrev-ref', 'HEAD']) !== branch) {
+      log(`${dir} is left over and is not the ${branch} worktree; recreating it`);
+      removeWorktree(root, dir);
+    }
     if (!existsSync(dir)) {
       mkdirSync(trees, { recursive: true });
       const r = branchExists(branch) ? git(root, ['worktree', 'add', dir, branch]) : git(root, ['worktree', 'add', '-b', branch, dir, main]);
@@ -293,7 +300,7 @@ export async function runParallel(ctx, group, opts) {
         }
       }
       if (!problem) {
-        git(root, ['worktree', 'remove', '--force', dir]);
+        removeWorktree(root, dir);
         git(root, ['branch', '-D', branch]);
         await board['task note'].run({ id, note: `autopilot: merged into ${main}` }, ctx);
         post(root, group, { from: 'wololo', title: 'wololo', text: `"${t.title}" (${id}) is merged into ${main}${t.touches?.length ? ` (changed ${t.touches.join(', ')})` : ''}. If your step uses it, run \`git merge ${main}\` in your worktree.` });

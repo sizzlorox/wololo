@@ -305,3 +305,81 @@ test('seam: a hotspot file gets one registry step first; the steps that changed 
   assert.deepEqual(after['g-4'].touches, ['src/ui.ts']);
   assert.equal(afterSeam(repo, 'g'), 0, 'once');
 });
+
+test('a step whose worktree folder was left behind empty (Windows) gets a real worktree again, not the bare folder', async () => {
+  const { mkdirSync } = await import('node:fs');
+  writeFileSync(join(scratch, 'agent.cjs'), String.raw`
+const fs = require('node:fs');
+const { execSync } = require('node:child_process');
+const prompt = process.argv[2];
+fs.appendFileSync(process.env.PROMPT_LOG, JSON.stringify(prompt) + '\n');
+if (prompt.includes('You are the builder')) {
+  fs.appendFileSync(${JSON.stringify(join(scratch, 'where.log'))}, execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf8' }));
+  fs.writeFileSync('alpha.js', '1\n');
+  execSync('git add -A && git commit -qm "feat: alpha"');
+}
+`);
+  setup({ workers: 2, gapRounds: 0, verifiers: 0, hillClimb: 0 });
+  const now = new Date().toISOString();
+  const { writeTask } = await import('../src/features/board/store.js');
+  writeTask(repo, { id: 'g-01', title: 'Add alpha', group: 'g', body: '', status: 'todo', queue: [], notes: [], seq: 1, deps: [], touches: ['alpha.js'], created: now, updated: now });
+  const left = join(dirname(repo), `.${basename(repo)}-wololo-worktrees`, 'g-01');
+  mkdirSync(left, { recursive: true }); // what a removal Windows could not finish leaves behind
+  const r = wololo(['autopilot', '--group', 'g']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.err, /is left over and is not the wololo\/g-01 worktree; recreating it/);
+  assert.equal(readFileSync(join(scratch, 'where.log'), 'utf8').trim(), 'wololo/g-01', 'the builder ran on its own branch, not the main checkout');
+  assert.ok(existsSync(join(repo, 'alpha.js')), 'and its work was merged');
+});
+
+test('a builder killed while waiting on a slow command is blocked with that command named, not split again and again', async () => {
+  const { writeTask, readTask } = await import('../src/features/board/store.js');
+  // starts the long check, then only waits on it, until the stall limit kills it
+  writeFileSync(join(scratch, 'agent.cjs'), String.raw`
+const out = (e) => console.log(JSON.stringify(e));
+const call = (name, args) => out({ type: 'tool_execution_start', toolName: name, toolCallId: String(Math.random()), args });
+if (process.argv[2].includes('You are the builder')) {
+  call('bash', { command: 'npx vitest run tests/sim/m4.test.ts' });
+  for (let i = 0; i < 5; i++) call('wait', {});
+  setInterval(() => {}, 1000);
+}
+`);
+  setup({ gapRounds: 0, verifiers: 0, hillClimb: 0, stallMinutes: 0.02 });
+  const now = new Date().toISOString();
+  writeTask(repo, { id: 'g-01', title: 'Run the year-40 check', group: 'g', body: '', status: 'todo', queue: [], notes: [], seq: 1, created: now, updated: now });
+  const r = wololo(['autopilot', '--group', 'g']);
+  assert.notEqual(r.code, 0);
+  const t = readTask(repo, 'g-01');
+  assert.equal(t?.status, 'blocked');
+  assert.match(t?.notes.at(-1) ?? '', /kept waiting on `npx vitest run tests\/sim\/m4\.test\.ts`, which takes longer than an agent may run/);
+  assert.equal(t?.splitInto, undefined, 'not split: a smaller step would wait on the same command');
+  assert.equal(prompts().filter((p) => p.includes('You are the splitter')).length, 0);
+});
+
+test('merging a step never deletes the main repo\'s node_modules through the worktree\'s link to it', async () => {
+  const { mkdirSync } = await import('node:fs');
+  writeFileSync(join(scratch, 'agent.cjs'), String.raw`
+const fs = require('node:fs');
+const { execSync } = require('node:child_process');
+const prompt = process.argv[2];
+fs.appendFileSync(process.env.PROMPT_LOG, JSON.stringify(prompt) + '\n');
+if (prompt.includes('You are the planner')) {
+  const path = /Write the plan to (\S+)/.exec(prompt)[1];
+  fs.writeFileSync(path, JSON.stringify({ tasks: [{ title: 'Add alpha', body: 'a', deps: [], touches: ['alpha.js'] }, { title: 'Add beta', body: 'b', deps: [], touches: ['beta.js'] }] }));
+} else if (prompt.includes('You are the builder')) {
+  const m = /Add (\w+)/.exec(prompt.split('Implement this feature:')[1]);
+  fs.writeFileSync(m[1] + '.js', '1\n');
+  execSync('git add -A && git commit -qm "feat: ' + m[1] + '"');
+}
+`);
+  setup({ workers: 2, gapRounds: 0, verifiers: 0, hillClimb: 0 });
+  writeFileSync(join(repo, '.gitignore'), `${readFileSync(join(repo, '.gitignore'), 'utf8')}\nnode_modules\n`);
+  git(['add', '-A']);
+  git(['commit', '-qm', 'ignore node_modules']);
+  mkdirSync(join(repo, 'node_modules', 'pkg'), { recursive: true });
+  writeFileSync(join(repo, 'node_modules', 'pkg', 'index.js'), 'keep me\n');
+  const r = wololo(['autopilot', '--goal', 'alpha and beta', '--plan']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.ok(existsSync(join(repo, 'alpha.js')) && existsSync(join(repo, 'beta.js')), 'both merged');
+  assert.equal(readFileSync(join(repo, 'node_modules', 'pkg', 'index.js'), 'utf8'), 'keep me\n', 'the shared dependencies survived both merges');
+});

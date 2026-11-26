@@ -12,6 +12,10 @@ import { entriesOf, recorder } from './transcript.js';
 
 export const DEFAULT_TIMEOUT_MINUTES = 45;
 export const DEFAULT_STALL_MINUTES = 20;
+/** Tools that wait on a background job. */
+const WAIT_TOOL = /^(wait|await|bashoutput|bash_output|await_job|job_wait)$/i;
+/** Waits in a row on one command that make it the reason an agent did not finish. */
+const WAITS = 3;
 const SPINNER = /^(working|thinking)\.*$/i;
 /** Compactions in a row with no tool call or answer between them: the context cannot fit the window. */
 export const COMPACTION_LOOP = 3;
@@ -63,7 +67,7 @@ export function progress(root, base) {
  * @param {string} role
  * @param {(msg: string) => void} log
  * @param {{ task?: string, learned?: string[] }} [meta]  recorded with the run's usage: its step, and the learned skills it was given
- * @returns {Promise<import('../../core/exec.js').ExecResult & { unfinished?: string, raw: string, cutoff?: number }>}  `unfinished` says why the agent did not end on its own; `raw` is stdout before streamed JSON became the answer; `cutoff` is the most output tokens a cut-off reply had
+ * @returns {Promise<import('../../core/exec.js').ExecResult & { unfinished?: string, raw: string, cutoff?: number, waitingOn?: string }>}  `unfinished` says why the agent did not end on its own; `raw` is stdout before streamed JSON became the answer; `cutoff` is the most output tokens a cut-off reply had
  */
 export async function runAgent(ctx, argv, role, log, meta = {}) {
   const minutes = ctx.config.autopilot.agentTimeoutMinutes ?? DEFAULT_TIMEOUT_MINUTES;
@@ -107,6 +111,9 @@ export async function runAgent(ctx, argv, role, log, meta = {}) {
   /** Tool calls since the last edit or file change. @type {string[]} */
   let calls = [];
   let circling = '';
+  /** The last shell command it started, and how many wait calls since. */
+  let lastCommand = '';
+  let waits = 0;
   let lastProgress = started;
   /** HEAD plus the working tree: changes here are progress even when the agent prints nothing. */
   const tree = () => `${gitOut(ctx.root, ['rev-parse', 'HEAD'])}\n${gitOut(ctx.root, ['status', '--porcelain'])}`;
@@ -166,6 +173,12 @@ export async function runAgent(ctx, argv, role, log, meta = {}) {
     if (a.kind === 'compact' && a.say?.startsWith('compacting')) show({ compactions: (shown.compactions ?? 0) + 1 });
     if (a.kind === 'work') compactions = capped = 0;
     if (a.tool && a.say) {
+      // waiting on a background job (omp wait, claude BashOutput, sleep) is waiting on the last command it started
+      if (WAIT_TOOL.test(a.tool) || /^(bash|shell): sleep\b/i.test(a.say)) waits++;
+      else if (/^(bash|shell|powershell): /i.test(a.say)) {
+        lastCommand = a.say.replace(/^\w+: /, '');
+        waits = 0;
+      } else if (EDIT_TOOL.test(a.tool)) waits = 0;
       if (EDIT_TOOL.test(a.tool)) calls = [];
       else calls.push(a.say);
       const repeats = calls.length - new Set(calls).size;
@@ -233,7 +246,9 @@ export async function runAgent(ctx, argv, role, log, meta = {}) {
   if (killed) count(ctx.root, `killed: ${killed}`);
   // ponytail: the prompt is the longest argv entry for every harness wololo drives; plumb it through if one ever reads it from stdin
   saveRun(ctx.root, { ...usageRecord(), live: false, ...(killed ? { killed } : {}) });
+  // killed while waiting on a slow command: the command, not the agent, is the problem
+  const waitingOn = (circling || looping || stalled || r.timedOut) && waits >= WAITS && lastCommand ? lastCommand : undefined;
   const unfinished = circling ? CIRCLES : looping ? (capped >= compactions ? OUTPUT_CAP : CONTEXT_LOOP) : r.timedOut ? `timed out after ${minutes}m` : stalled ? `stalled for ${stallMinutes}m` : r.code !== 0 ? `exited ${r.code}` : undefined;
   // Streamed JSON is for machines; callers show the agent's answer (and stderr, where errors go).
-  return { ...r, ...(streamed ? { stdout: text } : {}), raw: r.stdout, unfinished, ...(cutoff ? { cutoff } : {}) };
+  return { ...r, ...(streamed ? { stdout: text } : {}), raw: r.stdout, unfinished, ...(cutoff ? { cutoff } : {}), ...(waitingOn ? { waitingOn } : {}) };
 }

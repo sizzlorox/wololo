@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { git, gitOut } from '../../core/git.js';
+import { removeWorktree } from '../../core/worktree.js';
 import { rotate } from '../../core/rotate.js';
 import { statePath } from '../../core/state.js';
 import { readTasks } from '../board/store.js';
@@ -95,7 +96,7 @@ export function clean(root, opts = {}) {
       if (existsSync(dir) && gitOut(dir, ['status', '--porcelain'])) continue;
       actions.push(`${dryRun ? 'would remove' : 'removed'} merged worktree and branch ${branch}`);
       if (dryRun) continue;
-      if (existsSync(dir)) git(root, ['worktree', 'remove', '--force', dir]);
+      if (existsSync(dir)) removeWorktree(root, dir);
       git(root, ['branch', '-D', branch]);
     }
   }

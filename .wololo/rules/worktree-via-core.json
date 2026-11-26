@@ -1,0 +1,29 @@
+{
+  "$schema": "../../schema/rule.schema.json",
+  "id": "worktree-via-core",
+  "kind": "forbid",
+  "severity": "error",
+  "files": [
+    "src/**/*.js"
+  ],
+  "exclude": [
+    "src/core/worktree.js"
+  ],
+  "pattern": "['\"]worktree['\"],\\s*['\"]remove['\"]",
+  "why": "git worktree remove --force follows the node_modules junction parallel worktrees link to the main repo, and emptied the main repo's node_modules on every merge.",
+  "fix": "Call removeWorktree(root, dir) from src/core/worktree.js: it unlinks links first, then removes the worktree.",
+  "examples": {
+    "bad": [
+      {
+        "path": "src/features/x/a.js",
+        "content": "git(root, ['worktree', 'remove', '--force', dir]);\n"
+      }
+    ],
+    "good": [
+      {
+        "path": "src/features/x/a.js",
+        "content": "removeWorktree(root, dir);\n"
+      }
+    ]
+  }
+}

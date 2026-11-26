@@ -79,6 +79,13 @@ const redSummary = (gate) =>
     })
     .join('; ');
 
+/**
+ * Splitting a step does not make a command faster: say which command, and what to do.
+ * @param {string} command @param {number} [minutes]
+ */
+export const slowCheck = (command, minutes) =>
+  `the builder kept waiting on \`${command.slice(0, 160)}\`, which takes longer than an agent may run (autopilot.agentTimeoutMinutes = ${minutes ?? 45}). Make that check faster (fewer seeds or years, a coarser tick, a smaller sample) or raise the limit`;
+
 /** @param {{ parts: { name: string, ok: boolean, detail: string[] }[] }} gate */
 export const gateFailures = (gate) => gate.parts.filter((p) => !p.ok).flatMap((p) => [p.name, ...p.detail]).join('\n');
 
@@ -158,6 +165,7 @@ export async function runLoop(ctx, opts) {
       built = await spawnAgent('builder', builderPrompt(config.bin, opts.goal, { handoff: opts.handoff, rules, resume, peers: opts.peers }));
     }
     if (built.unfinished === OUTPUT_CAP) return fail(`the builder's replies are cut off at ${built.cutoff ? `${built.cutoff} output tokens` : 'the output limit'}${config.autopilot.thinking === 'off' ? ' even with thinking off' : ''}; ${OUTPUT_CAP_FIX}`, { iterations: 0, findings: 0 });
+    if (built.unfinished && built.waitingOn) return fail(slowCheck(built.waitingOn, config.autopilot.agentTimeoutMinutes), { iterations: 0, findings: 0 });
     if (built.unfinished && opts.split) return { ok: false, summary: `the builder did not finish (${built.unfinished})`, data: { split: built.unfinished, context: ranOut(built) } };
     if (built.unfinished) return fail(`the builder did not finish in ${stuckAfter + 1} attempt(s) (last: ${built.unfinished}); split the task or give agents more time (autopilot.agentTimeoutMinutes)`, { iterations: 0, findings: 0 });
     await onTask('task note', { note: `autopilot: builder (${opts.agent}) finished` });
