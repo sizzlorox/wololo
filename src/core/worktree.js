@@ -25,6 +25,15 @@ export function removeWorktree(root, dir) {
     }
   }
   git(root, ['worktree', 'remove', '--force', dir]);
-  rmSync(dir, { recursive: true, force: true });
+  // Windows refuses while any process (a test runner, tsc, a language server) still has the folder
+  // open. Retry briefly; if it is still held, leave it: the next run or `wololo clean` removes it,
+  // and a worker never reuses a folder that is not its worktree. Never crash the run over it.
+  for (let attempt = 0; attempt < 5 && existsSync(dir); attempt++) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200 * (attempt + 1));
+    }
+  }
   git(root, ['worktree', 'prune']);
 }
