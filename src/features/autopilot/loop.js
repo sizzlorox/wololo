@@ -3,7 +3,6 @@ import { sh } from '../../core/exec.js';
 import { recordEvent } from '../../core/state.js';
 import { shortHash, tail } from '../../core/text.js';
 import { commands as boardCommands } from '../board/command.js';
-import { runGate } from '../gate/command.js';
 import { allSteps } from '../verify/command.js';
 import { clip, contextRules, failureBudget, overflowHint } from './budget.js';
 import { count, noteEverywhere, setStatus } from './status.js';
@@ -12,7 +11,7 @@ import { refreshConfig } from './adopt.js';
 import { CONTEXT_LOOP, OUTPUT_CAP, OUTPUT_CAP_FIX, runAgent } from './agent.js';
 import { agentArgv } from './argv.js';
 import { learnedFor } from '../learn/store.js';
-import { hillClimb } from './climb.js';
+import { hillClimb, judgedGate } from './climb.js';
 import { protectedHere } from './branch.js';
 
 const board = Object.fromEntries(boardCommands.map((c) => [c.name, c]));
@@ -198,7 +197,7 @@ export async function runLoop(ctx, opts) {
   for (let i = 1; i <= opts.max; i++) {
     ctx = refreshConfig(ctx, log);
     config = ctx.config;
-    const gate = await runGate(ctx);
+    const gate = await judgedGate(ctx, { goal: opts.goal, base, spawn: spawnAgent });
     setStatus(root, { gate: gate.ok ? 'green' : `red: ${redSummary(gate)}`, gateAt: new Date().toISOString() });
     count(root, gate.ok ? 'gate green' : 'gate red');
     if (!gate.ok) {
@@ -234,7 +233,7 @@ export async function runLoop(ctx, opts) {
     return land(i);
   }
   // Verifiers past --max are still polishing, not blocking: the gate is the merge bar, so a green gate lands.
-  const last = await runGate(ctx);
+  const last = await judgedGate(ctx, { goal: opts.goal, base, spawn: spawnAgent });
   if (last.ok) return land(opts.max, 'verifiers still finding things');
   return fail(`did not converge in ${opts.max} iterations`, { iterations: opts.max, findings });
 }

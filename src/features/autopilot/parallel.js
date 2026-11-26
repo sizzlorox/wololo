@@ -10,13 +10,13 @@ import { tail } from '../../core/text.js';
 import { commands as boardCommands } from '../board/command.js';
 import { post } from '../board/inbox.js';
 import { readTask, readTasks, unlock } from '../board/store.js';
-import { runGate } from '../gate/command.js';
 import { runAgent } from './agent.js';
 import { agentArgv } from './argv.js';
 import { clip, failureBudget } from './budget.js';
 import { gateFailures, log, runLoop } from './loop.js';
 import { order, scaffoldIfUnverifiable } from './plan.js';
 import { mergerPrompt } from './prompts.js';
+import { judgedGate } from './climb.js';
 import { overlaps } from './areas.js';
 import { overwritten, pickReady, waitReasons } from './schedule.js';
 
@@ -265,7 +265,7 @@ export async function runParallel(ctx, group, opts) {
       }
       if (!problem) {
         state('gate on the merged result');
-        const gate = await runGate(ctx);
+        const gate = await judgedGate(ctx, { goal: [t.title, t.body].filter(Boolean).join('\n\n'), base: before, spawn: (role, prompt) => runAgent(ctx, agentArgv(ctx.config, opts.agent, prompt, { root }), `${role} · ${t.title}`, log) });
         if (!gate.ok) {
           resetTo(root, before); // uncommitted work was committed before the merge: this only undoes the merge
           problem = { conflicts: [], failures: clip(gateFailures(gate), failureBudget(ctx.config.autopilot.contextWindow)) };

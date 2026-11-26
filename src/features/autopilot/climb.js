@@ -1,10 +1,11 @@
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { diffHint } from '../../core/repos.js';
 import { ensureDir } from '../../core/files.js';
 import { commitAll, heads, resetTo } from '../../core/repos.js';
 import { recordEvent, statePath } from '../../core/state.js';
 import { runGate } from '../gate/command.js';
 import { loadRubric, runScore } from '../score/command.js';
+import { snapshot } from '../../core/repos.js';
 import { protectedHere } from './branch.js';
 
 /** Good enough: stop climbing. ponytail: fixed; make it a setting if repos need a different bar */
@@ -31,6 +32,82 @@ export function judgePrompt(bin, goal, base, questions, path) {
     `Write ${path} as JSON: {"scores": {"${questions[0]?.id ?? 'id'}": 0.7}, "notes": {"${questions[0]?.id ?? 'id'}": "exactly what is missing for a 1"}}`,
     `(Gate command, if you want it: ${bin} gate)`,
   ].join('\n');
+}
+
+/** @param {string} root */
+const judgeFile = (root) => statePath(root, 'judge.json');
+
+/** @param {unknown} v */
+const clamp = (v) => Math.max(0, Math.min(1, /** @type {number} */ (v)));
+
+/**
+ * The judge's scores, only when they were given for the state the repo is in now (its commit and
+ * working tree): a gate must never pass on a judgment of different code. {} otherwise.
+ * @param {string} root
+ * @returns {Record<string, number>}
+ */
+export function judgedScores(root) {
+  try {
+    const j = JSON.parse(readFileSync(judgeFile(root), 'utf8'));
+    if (!j.state || j.state !== snapshot(root)) return {};
+    return Object.fromEntries(Object.entries(j.scores ?? {}).filter(([, v]) => typeof v === 'number').map(([k, v]) => [k, clamp(v)]));
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Have the judge agent score the rubric's judgment criteria for the state the repo is in now, and
+ * record which state that was (see judgedScores).
+ * @param {import('../../core/types.js').Ctx} ctx
+ * @param {{ goal: string, base: string, spawn: (role: string, prompt: string) => Promise<unknown> }} o
+ * @returns {Promise<{ scores: Record<string, number>, notes: Record<string, string> }>}
+ */
+export async function judgeNow(ctx, o) {
+  const { root, config } = ctx;
+  let questions;
+  try {
+    questions = loadRubric(root).criteria.filter((c) => c.type === 'judgment');
+  } catch {
+    return { scores: {}, notes: {} };
+  }
+  if (!questions.length) return { scores: {}, notes: {} };
+  const path = judgeFile(root);
+  ensureDir(statePath(root));
+  rmSync(path, { force: true });
+  const state = snapshot(root); // what is judged: the judge must not change files, so this is it
+  await o.spawn('judge', judgePrompt(config.bin, o.goal, o.base, questions, path));
+  try {
+    const j = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {};
+    const scores = Object.fromEntries(Object.entries(j.scores ?? {}).filter(([k, v]) => questions.some((q) => q.id === k) && typeof v === 'number').map(([k, v]) => [k, clamp(v)]));
+    const notes = j.notes ?? {};
+    writeFileSync(path, JSON.stringify({ scores, notes, state: snapshot(root) === state ? state : '' }));
+    return { scores, notes };
+  } catch {
+    return { scores: {}, notes: {} };
+  }
+}
+
+/**
+ * A gate that is red only because judgment criteria are not scored yet (gate.requireJudgment).
+ * @param {{ ok: boolean, parts: { name: string, ok: boolean, detail: string[] }[] }} gate
+ */
+export const pendingJudgmentOnly = (gate) => {
+  const red = gate.parts.filter((p) => !p.ok);
+  return red.length === 1 && red[0].name === 'rubric' && red[0].detail.some((d) => d.includes('pending judgment'));
+};
+
+/**
+ * The gate, with the judge's scores for this state; when only judgment is missing, the judge scores
+ * it first. One call for every gate autopilot runs.
+ * @param {import('../../core/types.js').Ctx} ctx
+ * @param {{ goal?: string, base: string, spawn: (role: string, prompt: string) => Promise<unknown> }} o
+ */
+export async function judgedGate(ctx, o) {
+  const gate = await runGate(ctx, { judge: judgedScores(ctx.root) });
+  if (!pendingJudgmentOnly(gate) || !o.goal) return gate;
+  await judgeNow(ctx, { goal: o.goal, base: o.base, spawn: o.spawn });
+  return runGate(ctx, { judge: judgedScores(ctx.root) });
 }
 
 /** @param {string} bin @param {string} goal @param {{ id: string, question?: string, note: string }} c */
@@ -67,21 +144,8 @@ export async function hillClimb(ctx, o) {
   }
   if (!rubric.criteria.length) return undefined;
   const questions = rubric.criteria.filter((c) => c.type === 'judgment');
-  const path = statePath(root, 'judge.json');
-  /** @returns {Promise<{ scores: Record<string, number>, notes: Record<string, string> }>} */
-  const judge = async () => {
-    if (!questions.length) return { scores: {}, notes: {} };
-    ensureDir(statePath(root));
-    rmSync(path, { force: true });
-    await o.spawn('judge', judgePrompt(config.bin, o.goal, o.base, questions, path));
-    try {
-      const j = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {};
-      const scores = Object.fromEntries(Object.entries(j.scores ?? {}).filter(([k, v]) => questions.some((q) => q.id === k) && typeof v === 'number').map(([k, v]) => [k, Math.max(0, Math.min(1, /** @type {number} */ (v)))]));
-      return { scores, notes: j.notes ?? {} };
-    } catch {
-      return { scores: {}, notes: {} };
-    }
-  };
+  const judge = () => (questions.length ? judgeNow(ctx, { goal: o.goal, base: o.base, spawn: o.spawn }) : Promise.resolve({ scores: /** @type {Record<string, number>} */ ({}), notes: /** @type {Record<string, string>} */ ({}) }));
+
   /** Everything as it is now, committed: what a round is undone to. */
   const checkpoint = (/** @type {string} */ what) => {
     if (protectedHere(root, config.autopilot.protectedBranches)) throw new Error(protectedHere(root, config.autopilot.protectedBranches));
@@ -104,13 +168,13 @@ export async function hillClimb(ctx, o) {
     o.log(`hill-climb round ${round}: score ${score.total}, weakest ${weakest.id} (${weakest.score}) → improver`);
     const before = checkpoint(`before hill-climb round ${round}`);
     await o.spawn('improver', improverPrompt(config.bin, o.goal, { id: weakest.id, question: weakest.question, note: verdict.notes[weakest.id] ?? weakest.note }));
-    const gate = await runGate(ctx);
+    const nextVerdict = await judge();
+    const gate = await runGate(ctx, { judge: nextVerdict.scores });
     if (!gate.ok) {
       undo(before);
       o.log(`hill-climb round ${round}: the improvement broke the gate; undone, stopping`);
       break;
     }
-    const nextVerdict = await judge();
     const next = await runScore(ctx, { judge: nextVerdict.scores, record: false });
     if (next.total <= score.total) {
       undo(before);

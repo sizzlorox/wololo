@@ -6,6 +6,7 @@ import { readTasks, unlock, writeTask } from '../board/store.js';
 import { contextRules, overflowHint, stepSize, windowLabel } from './budget.js';
 import { loadConfig } from '../../core/config.js';
 import { detect } from '../init/detect.js';
+import { allSteps } from '../verify/command.js';
 import { log, runLoop } from './loop.js';
 import { MAX_SPLIT_DEPTH, splitTask } from './split.js';
 import { commands as boardCommands } from '../board/command.js';
@@ -135,7 +136,7 @@ export function scaffoldIfUnverifiable(ctx, group, tasks, reopen) {
   } catch {
     return;
   }
-  if (config.verify.steps.length || detect(ctx.root).steps.length) return;
+  if (allSteps({ ...ctx, config }).length || detect(ctx.root).steps.length) return;
   const now = new Date().toISOString();
   const id = `${group}-00`;
   if (!tasks.some((t) => t.id === id)) {

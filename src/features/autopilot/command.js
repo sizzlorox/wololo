@@ -5,6 +5,7 @@ import { launch } from '../watch/actions.js';
 import { readTask } from '../board/store.js';
 import { checkMcpFiles } from '../doctor/mcp.js';
 import { runGate } from '../gate/command.js';
+import { judgedScores } from './climb.js';
 import { agentArgv } from './argv.js';
 import { DEFAULT_STALL_MINUTES } from './agent.js';
 import { contextRules, windowLabel } from './budget.js';
@@ -52,7 +53,7 @@ export const commands = [
       const window = config.autopilot.contextWindow;
 
       if (input.dryRun) {
-        const gate = await runGate(ctx);
+        const gate = await runGate(ctx, { judge: judgedScores(root) });
         const loop = gate.ok ? opts.focuses.map((f) => agentArgv(config, agent, verifierPrompt(config.bin, f))) : [agentArgv(config, agent, fixerPrompt(config.bin, gateFailures(gate)))];
         const first = input.plan
           ? [agentArgv(config, agent, plannerPrompt(config.bin, goal, '.wololo/state/plan.json', { window: windowLabel(window), maxTasks: 30 }))]
