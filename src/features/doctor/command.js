@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { listRepos } from '../../core/repos.js';
+import { allSteps } from '../verify/command.js';
 import { ADAPTERS } from '../../adapters/index.js';
 import { onPath } from '../../core/exec.js';
 import { CONFIG_FILE, wololoPath } from '../../core/state.js';
@@ -18,7 +19,14 @@ export const commands = [
       /** @type {[boolean, string][]} */
       const checks = [];
       checks.push([ctx.hasConfig, ctx.hasConfig ? `${CONFIG_FILE} found` : `no ${CONFIG_FILE}: run wololo init`]);
-      checks.push([config.verify.steps.length > 0, `${config.verify.steps.length} verify step(s) (${config.verify.steps.filter((s) => s.fast).length} fast)`]);
+      const steps = allSteps(ctx);
+      // in a workspace, say how many each repo brings: "backend 1, frontend 2"
+      const perRepo = Object.entries(steps.reduce((/** @type {Record<string, number>} */ n, s) => {
+        const repo = s.name.includes(': ') ? s.name.split(': ')[0] : '';
+        if (repo) n[repo] = (n[repo] ?? 0) + 1;
+        return n;
+      }, {})).map(([r, n]) => `${r} ${n}`).join(', ');
+      checks.push([steps.length > 0, `${steps.length} verify step(s) (${steps.filter((s) => s.fast).length} fast)${perRepo ? `: ${perRepo}` : ''}`]);
       const { rules, errors } = loadRules(root);
       const failing = rules.filter((r) => testRule(r).length);
       checks.push([errors.length === 0 && failing.length === 0, `${rules.length} rule(s)${errors.length ? `, ${errors.length} broken` : ''}${failing.length ? `, ${failing.length} failing their examples` : ''}`]);
@@ -32,7 +40,8 @@ export const commands = [
       checks.push([true, `agent CLIs on PATH: ${installed.map((a) => a.id).join(', ') || 'none'} (autopilot can drive these)`]);
       const mcp = checkMcpFiles(root);
       checks.push([mcp.length === 0, mcp.length ? mcp.join('\n  ') : 'MCP server configs look runnable']);
-      checks.push([existsSync(join(root, '.git')), existsSync(join(root, '.git')) ? 'git repository' : 'not a git repo: review/autopilot need git']);
+      const repos = listRepos(root);
+      checks.push([repos.length > 0, repos[0] === '.' ? 'git repository' : repos.length ? `workspace of ${repos.length} git repos: ${repos.join(', ')}` : 'not a git repo, and holds no repos: review/autopilot need git']);
       return {
         ok: checks.every(([ok]) => ok),
         summary: checks.every(([ok]) => ok) ? 'kitchen is in order' : `${checks.filter(([ok]) => !ok).length} problem(s)`,

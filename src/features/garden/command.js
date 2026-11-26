@@ -1,4 +1,5 @@
 import { git } from '../../core/git.js';
+import { allSteps } from '../verify/command.js';
 import { join } from 'node:path';
 import { listFiles, readText } from '../../core/files.js';
 import { wololoPath } from '../../core/state.js';
@@ -60,7 +61,7 @@ export function gardenFindings(ctx) {
     const since = git(root, ['rev-list', '--count', 'HEAD', `^${lastTouch(root, '.wololo/skills/verify-app')}`]).stdout?.trim();
     if (Number(since) > 50) out.push({ id: 'verify-app:stale', title: `verify-app skill untouched for ${since} commits`, body: 'Re-run it end to end and update what changed.' });
   }
-  if (!config.verify.steps.length) out.push({ id: 'verify:none', title: 'no verify steps configured', body: 'Without verification you are the meat proxy.' });
+  if (!allSteps(ctx).length) out.push({ id: 'verify:none', title: 'no verify steps configured', body: 'Without verification you are the meat proxy.' });
 
   for (const t of readTasks(root)) {
     const idle = Date.now() - Date.parse(t.updated);

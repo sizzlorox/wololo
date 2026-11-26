@@ -1,4 +1,5 @@
 import { readEvents } from '../../core/state.js';
+import { allSteps } from '../verify/command.js';
 import { age, cluster, truncate } from '../../core/text.js';
 import { readTasks } from '../board/store.js';
 import { readQueue } from '../queue/store.js';
@@ -22,11 +23,11 @@ export const commands = [
       days: { type: 'number', description: 'Transcript look-back days', default: 30 },
     },
     async run(input, ctx) {
-      const { root, config } = ctx;
+      const { root } = ctx;
       /** @type {{ minutes: number, signal: string, action: string }[]} */
       const out = [];
 
-      if (!config.verify.steps.length) out.push({ minutes: 999, signal: 'no verify steps: you are the meat proxy for every change', action: 'configure verify.steps and write the verify-app skill' });
+      if (!allSteps(ctx).length) out.push({ minutes: 999, signal: 'no verify steps: you are the meat proxy for every change', action: 'configure verify.steps and write the verify-app skill' });
 
       const blocked = readTasks(root).filter((t) => t.status === 'blocked' && t.blockedOn === 'human');
       if (blocked.length)

@@ -156,3 +156,15 @@ test('workspace: a repo with master and develop and no base set is refused, nami
   assert.match(r.out + r.err, /backend: it has master and develop: set which one features start from in autopilot.repos.backend.base/);
   assert.equal(git(join(root, 'backend'), ['branch', '--list', 'feature/*']).stdout.trim(), '', 'no branch was made');
 });
+
+test('workspace: doctor, garden and bottleneck count each repo\'s verify steps and see the repos', () => {
+  const root = workspace();
+  const config = JSON.parse(readFileSync(join(root, 'wololo.config.json'), 'utf8'));
+  config.verify.steps = []; // only the repos verify
+  writeFileSync(join(root, 'wololo.config.json'), JSON.stringify(config));
+  const d = wololo(root, ['doctor']);
+  assert.match(d.out, /✓ 2 verify step\(s\) \(0 fast\): backend 1, frontend 1/);
+  assert.match(d.out, /✓ workspace of 2 git repos: backend, frontend/);
+  assert.doesNotMatch(wololo(root, ['garden']).out, /no verify steps/);
+  assert.doesNotMatch(wololo(root, ['bottleneck']).out, /no verify steps/);
+});
