@@ -40,6 +40,50 @@ export function decode(chunk) {
   return keys;
 }
 
+const PASTE_START = '\x1b[200~';
+const PASTE_END = '\x1b[201~';
+
+/**
+ * Stdin chunks to keys, with a paste as ONE key, `paste:<text>`: its line breaks are text, not
+ * enters. Read as keystrokes, a pasted goal submitted its first line and typed the rest into the
+ * screen as commands. Bracketed paste (the TUI turns it on) may span chunks, so this keeps state.
+ * Terminals without it: a chunk with text after a line break can only be a paste.
+ * @returns {(chunk: string) => string[]}
+ */
+export function paster() {
+  /** @type {string | null} */
+  let pasting = null;
+  return (chunk) => {
+    /** @type {string[]} */
+    const keys = [];
+    let rest = chunk;
+    while (rest) {
+      if (pasting !== null) {
+        const end = rest.indexOf(PASTE_END);
+        if (end < 0) {
+          pasting += rest;
+          return keys;
+        }
+        keys.push(`paste:${(pasting + rest.slice(0, end)).replace(/\r\n?/g, '\n')}`);
+        pasting = null;
+        rest = rest.slice(end + PASTE_END.length);
+        continue;
+      }
+      const start = rest.indexOf(PASTE_START);
+      const before = start < 0 ? rest : rest.slice(0, start);
+      if (/[\r\n][^\r\n\x1b]*[^\s\x1b]/.test(before) && !before.includes('\x1b')) keys.push(`paste:${before.replace(/\r\n?/g, '\n')}`);
+      else keys.push(...decode(before));
+      if (start < 0) break;
+      pasting = '';
+      rest = rest.slice(start + PASTE_START.length);
+    }
+    return keys;
+  };
+}
+
+/** @param {string} key */
+export const pasted = (key) => (key.startsWith('paste:') ? key.slice(6) : undefined);
+
 /**
  * @typedef {object} Field
  * @property {string} name
@@ -79,7 +123,9 @@ export function editForm(f, key) {
     if (missing) return { form: { ...next, at: fields.indexOf(missing), error: `${missing.label} is required` } };
     return { form: next, submit: Object.fromEntries(fields.map((x) => [x.name, x.value])) };
   }
-  if (key === 'backspace') cur.value = cur.value.slice(0, -1);
+  const text = pasted(key);
+  if (text !== undefined) cur.value += text;
+  else if (key === 'backspace') cur.value = cur.value.slice(0, -1);
   else if (key.length === 1) cur.value += key;
   return { form: next };
 }

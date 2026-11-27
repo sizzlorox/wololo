@@ -210,3 +210,58 @@ test('wrap splits coloured text between characters, never inside an escape, and 
     assert.ok(out.slice(1).every((l) => l.startsWith('\x1b[')), 'a continued colour carries over');
   }
 });
+
+test('a paste is one key, line breaks and all: it never submits a form or reaches a screen as keystrokes', async () => {
+  const { paster } = await import('../src/features/tui/input.js');
+  const text = 'Finish Hollowmere.\r\n\r\n1. Make it green.\r\n2. x marks the spot';
+  // bracketed paste (the TUI turns it on), even when the terminal splits it across chunks
+  const p = paster();
+  assert.deepEqual([...p(`\x1b[200~${text.slice(0, 10)}`), ...p(`${text.slice(10)}\x1b[201~`)], [`paste:${text.replace(/\r\n?/g, '\n')}`]);
+  // terminals without bracketed paste: a chunk with text after a line break is a paste, not enters
+  assert.deepEqual(paster()(text), [`paste:${text.replace(/\r\n?/g, '\n')}`]);
+  assert.deepEqual(paster()('a\r'), ['a', 'enter'], 'typing then enter is still enter');
+
+  let f = form('t', [{ name: 'goal', label: 'Goal', required: true }]);
+  const r = editForm(f, `paste:${text.replace(/\r\n?/g, '\n')}`);
+  assert.equal(r.submit, undefined, 'pasting never submits');
+  assert.equal(r.form.fields[0].value, text.replace(/\r\n?/g, '\n'));
+  assert.deepEqual(editForm(r.form, 'enter').submit, { goal: text.replace(/\r\n?/g, '\n') }, 'enter submits all of it');
+});
+
+test('the goal form shows a long pasted goal wrapped over many lines, not one cut-off line', async () => {
+  const { PassThrough } = await import('node:stream');
+  const { runApp } = await import('../src/features/tui/app.js');
+  const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {} });
+  let frame = '';
+  const stdout = { columns: 100, rows: 40, write: (/** @type {string} */ s) => (s.includes('\x1b[?2026h') ? (frame = s) : 0) };
+  /** @type {string[]} */
+  const submitted = [];
+  /** @type {import('../src/features/tui/app.js').Screen} */
+  const screen = {
+    id: 's',
+    title: 'S',
+    load: () => 0,
+    keys: () => [],
+    render: () => ['screen'],
+    handle: (key, _d, _ui, app) => void (key === 'n' && app.ask('New goal', [{ name: 'goal', label: 'Goal', required: true }], (v) => void submitted.push(v.goal))),
+  };
+  const done = runApp(/** @type {any} */ ({ root: '.' }), { screens: [screen], io: /** @type {any} */ ({ stdin, stdout }), interval: 60 });
+  const tick = () => new Promise((r) => setTimeout(r, 60));
+  try {
+    stdin.write('n');
+    await tick();
+    const goal = `${'word '.repeat(60)}\nSECOND LINE\nTHE END`;
+    stdin.write(`\x1b[200~${goal}\x1b[201~`);
+    await tick();
+    const plain = frame.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '');
+    assert.match(plain, /SECOND LINE/);
+    assert.match(plain, /THE END/, 'the end of a long goal is on screen');
+    assert.match(plain, /3 lines/, 'says how much is there');
+    stdin.write('\r');
+    await tick();
+    assert.deepEqual(submitted, [goal]);
+  } finally {
+    stdin.write('q');
+    await done;
+  }
+});

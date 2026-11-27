@@ -1,7 +1,8 @@
 import { spawn } from '../../core/proc.js';
 import { launch as launchDetached } from '../watch/actions.js';
 import { box, fit, pad, painter, width } from '../watch/widgets.js';
-import { decode, editForm, form as makeForm } from './input.js';
+import { editForm, form as makeForm, paster, pasted } from './input.js';
+import { wrap } from './layout.js';
 
 /**
  * The TUI shell: tabs, a status line, a key footer, and overlays (forms, confirmations, help).
@@ -178,9 +179,15 @@ export async function runApp(ctx, opts) {
       const from = Math.max(0, Math.min(f.at - Math.floor(fit2 / 2), f.fields.length - fit2));
       const rows = f.fields.slice(from, from + fit2).flatMap((x, j) => {
         const i = from + j;
-        const label = `${i === f.at ? c('33', '›') : ' '} ${x.label}${x.required ? '*' : ''}`;
-        const val = i === f.at ? `${x.value}${c('7', ' ')}` : x.value || c('2', x.hint ?? '');
-        return [label, `   ${val}`];
+        const lineCount = x.value ? x.value.split('\n').length : 0;
+        const label = `${i === f.at ? c('33', '›') : ' '} ${x.label}${x.required ? '*' : ''}${lineCount > 1 ? c('2', `  ${lineCount} lines, ${x.value.length} chars`) : ''}`;
+        if (i !== f.at) return [label, `   ${x.value ? x.value.split('\n')[0] : c('2', x.hint ?? '')}`];
+        // the field being edited wraps; a long one (a pasted goal) shows its end, where typing goes
+        const room = Math.max(3, h - 12 - 2 * (Math.min(fit2, f.fields.length) - 1));
+        const wrapped = x.value.split('\n').flatMap((l) => wrap(l, pw - 8));
+        const shown = wrapped.slice(-room);
+        shown[shown.length - 1] = `${shown.at(-1) ?? ''}${c('7', ' ')}`;
+        return [label, ...(wrapped.length > room ? [c('2', `   … ${wrapped.length - room} more line(s) above`)] : []), ...shown.map((l) => `   ${l}`)];
       });
       const more = f.fields.length > fit2 ? [c('2', `field ${f.at + 1}/${f.fields.length}`)] : [];
       body = overlay(body, box(f.title, [...rows, ...more, '', f.error ? c('31', f.error) : c('2', 'tab/↑↓ move · enter next/submit · esc cancel')], pw, c), w);
@@ -204,6 +211,11 @@ export async function runApp(ctx, opts) {
   /** @param {string} key */
   const onKey = async (key) => {
     if (key === 'ctrl-c') return true;
+    // a paste only means something in a form; anywhere else its letters would run commands
+    if (pasted(key) !== undefined && !asking) {
+      message = 'paste into a form (n for a new goal, a for a step), not into the screen';
+      return false;
+    }
     if (asking) {
       const r = editForm(asking.form, key);
       const a = asking;
@@ -251,7 +263,8 @@ export async function runApp(ctx, opts) {
     return false;
   };
 
-  out.write('\x1b[?1049h\x1b[?25l');
+  // 2004h: bracketed paste, so a paste arrives as one piece of text, not as keystrokes
+  out.write('\x1b[?1049h\x1b[?25l\x1b[?2004h');
   draw();
   const timer = setInterval(draw, Math.max(0.2, opts.interval ?? 1) * 1000);
   // a resize reflows everything: clear once, then redraw
@@ -269,7 +282,7 @@ export async function runApp(ctx, opts) {
       stdin.setRawMode?.(false);
       stdin.pause();
       stdin.removeAllListeners('data');
-      out.write('\x1b[?25h\x1b[?1049l');
+      out.write('\x1b[?2004l\x1b[?25h\x1b[?1049l');
       done(undefined);
     };
     stdin.setRawMode?.(true);
@@ -278,8 +291,9 @@ export async function runApp(ctx, opts) {
     // A burst (a held arrow, a paste) draws once, after its last key.
     let queue = Promise.resolve(false);
     let pending = 0;
+    const keysOf = paster();
     stdin.on('data', (b) => {
-      for (const key of decode(b.toString())) {
+      for (const key of keysOf(b.toString())) {
         pending++;
         queue = queue.then(async (stop) => {
           pending--;

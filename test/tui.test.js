@@ -34,7 +34,8 @@ function term(columns = 150, rows = 50) {
     stdout,
     screen: () => frame.replace(ANSI, ''),
     /** @param {string} k */
-    type: (k) => stdin.write(k),
+    // a person types: each enter arrives on its own (one chunk with text after a line break is a paste)
+    type: (k) => k.split(/(?<=\r)/).forEach((part) => stdin.write(part)),
     /** @param {RegExp} re @param {number} [ms] */
     async until(re, ms = 20000) {
       const end = Date.now() + ms;
