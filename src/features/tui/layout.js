@@ -53,8 +53,8 @@ export function wrap(text, w) {
 /** Wrapped lines by width, then text: a detail pane shows the same long transcript every frame. @type {Map<number, Map<string, string[]>>} */
 const memo = new Map();
 
-/** @param {string} line @param {number} w */
-function wrapped(line, w) {
+/** wrap, memoized. @param {string} line @param {number} w */
+export function wrapped(line, w) {
   let byText = memo.get(w);
   if (!byText) {
     memo.clear(); // a resize: the old width's lines are not coming back
@@ -69,9 +69,35 @@ function wrapped(line, w) {
   return out;
 }
 
+/** @typedef {{ length: number, slice: (from: number, to?: number) => string[] }} Pane  wrapped lines, built only for the part shown */
+
+/**
+ * A pane of blocks, each a height and a way to make its wrapped lines: slicing builds only the blocks in range.
+ * @param {{ h: number, lines: () => string[] }[]} blocks
+ * @returns {Pane}
+ */
+export function pane(blocks) {
+  const length = blocks.reduce((n, b) => n + b.h, 0);
+  return {
+    length,
+    slice(from, to = length) {
+      /** @type {string[]} */
+      const out = [];
+      let at = 0;
+      for (const b of blocks) {
+        if (at >= to) break;
+        if (at + b.h > from) out.push(...b.lines().slice(Math.max(0, from - at), to - at));
+        at += b.h;
+      }
+      return out;
+    },
+  };
+}
+
 /**
  * A list on the left, the selected item's details on the right; stacked when narrow.
- * @param {{ title: string, rows: string[], at: number, detailTitle: string, detail: string[], scroll?: number, clamped?: (scroll: number) => void }} p
+ * Detail is lines to wrap, or for a long pane a function of the width giving the wrapped lines lazily.
+ * @param {{ title: string, rows: string[], at: number, detailTitle: string, detail: string[] | ((w: number) => Pane), scroll?: number, clamped?: (scroll: number) => void }} p
  * @param {number} w @param {number} h @param {import('../watch/widgets.js').Paint} c
  * @returns {string[]}
  */
@@ -87,7 +113,7 @@ export function listDetail(p, w, h, c) {
   if (!p.rows.length) rows.push(c('2', '(empty)'));
   const counter = p.rows.length ? ` ${p.at + 1}/${p.rows.length}` : '';
   const list = box(`${p.title}${counter}`, rows, listW, c, listH);
-  const body = p.detail.flatMap((l) => wrapped(l, detailW - 4));
+  const body = typeof p.detail === 'function' ? p.detail(detailW - 4) : p.detail.flatMap((l) => wrapped(l, detailW - 4));
   const scroll = Math.max(0, Math.min(p.scroll ?? 0, body.length - (detailH - 2)));
   p.clamped?.(scroll);
   const shown = body.slice(scroll, scroll + detailH - 2);

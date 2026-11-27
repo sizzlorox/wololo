@@ -130,3 +130,28 @@ test('a live run is parsed as it grows: only the new bytes are read, and a half-
   }
   assert.ok(read < 100_000, `read ${read} bytes for a few new lines`);
 });
+
+test('the transcript pane is virtual: scrolling a long run reads only the entries on screen, and shows the right ones', async () => {
+  const { transcriptScreen } = await import('../src/features/tui/screens/transcript.js');
+  const { painter } = await import('../src/features/watch/widgets.js');
+  let reads = 0;
+  const entries = Array.from({ length: 3000 }, (_, i) => ({
+    kind: 'reply',
+    get text() {
+      reads++;
+      return `reply ${i}`;
+    },
+  }));
+  const d = { runs: [{ id: 'r', role: 'builder', at: '' }], run: { id: 'r', role: 'builder', at: '' }, data: { end: 0, entries, found: [] }, agent: null, live: new Map(), liveId: undefined };
+  const ui = /** @type {any} */ ({ at: 0, scroll: 0, follow: false });
+  const show = () => transcriptScreen.render(d, ui, 150, 40, painter(false)).join('\n');
+  show();
+  reads = 0;
+  ui.scroll = 6 + 3 * 1000; // a 6-line header, then 3 lines per reply: label, text, blank
+  const screen = show();
+  assert.match(screen, /reply 1000\b/);
+  assert.doesNotMatch(screen, /reply 999\b/);
+  assert.ok(reads < 200, `read ${reads} entries to show one screen`);
+  ui.follow = true;
+  assert.match(show(), /reply 2999\b/, 'follow shows the end');
+});

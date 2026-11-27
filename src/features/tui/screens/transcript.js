@@ -4,7 +4,7 @@ import { statePath } from '../../../core/state.js';
 import { age } from '../../../core/text.js';
 import { readStatus } from '../../autopilot/status.js';
 import { importLastRun, listRuns, readRunFrom, secrets } from '../../autopilot/transcript.js';
-import { listDetail, moveIn, num } from '../layout.js';
+import { listDetail, moveIn, num, pane, wrap, wrapped } from '../layout.js';
 
 /** What goes to the model: the prompt, other messages the harness sends, and tool results. */
 const OUTBOUND = new Set(['prompt', 'sent', 'result']);
@@ -26,6 +26,55 @@ function load(root, id) {
   run = { end: more.end, entries: [...run.entries, ...more.entries], found: [...run.found, ...more.entries.filter((e) => OUTBOUND.has(e.kind)).flatMap((e) => secrets(e.text))] };
   cache.set(id, run);
   return run;
+}
+
+/** @typedef {import('../../autopilot/transcript.js').Entry} Entry @typedef {import('../../watch/widgets.js').Paint} Paint */
+
+/** @param {Paint} c @param {string} color @param {string} text */
+const label = (c, color, text) => c(color, `── ${text} ${'─'.repeat(Math.max(0, 40 - text.length))}`);
+
+/** What one entry shows, before wrapping. @param {Entry} e @param {Record<string, any>} ui @param {Paint} c @returns {string[]} */
+function entryLines(e, ui, c) {
+  const at = e.at ? c('2', ` ${new Date(e.at).toLocaleTimeString()}`) : '';
+  if (e.kind === 'prompt') return [label(c, '36', '→ PROMPT  wololo → model') + at, e.text, ''];
+  if (e.kind === 'sent') return [label(c, '36', '→ SENT  harness → model') + at, e.text, ''];
+  if (e.kind === 'thinking') return ui.hideThinking ? [] : [label(c, '35', '← THINKING') + at, c('2', e.text), ''];
+  if (e.kind === 'reply') return [label(c, '32', '← REPLY') + at, e.text, ''];
+  if (e.kind === 'call') return [label(c, '33', `← TOOL CALL  ${e.tool}`) + at, e.text, ''];
+  if (e.kind === 'result') {
+    const body = e.text.split('\n');
+    const cut = !ui.fullResults && body.length > RESULT_LINES;
+    return [label(c, e.error ? '31' : '36', `→ TOOL RESULT  ${e.tool ?? ''} ${num(e.text.length)} chars, sent to the model${e.error ? ' (error)' : ''}`) + at, ...(cut ? [...body.slice(0, RESULT_LINES), c('2', `… ${body.length - RESULT_LINES} more lines (o)`)] : body), ''];
+  }
+  return []; // endpoint: shown in the header
+}
+
+/** Wrapped height per entry, for the width and toggles it was measured at. @type {WeakMap<Entry, { key: string, h: number }>} */
+const heights = new WeakMap();
+
+/** @param {Entry} e @param {number} w @param {string} flags @param {Record<string, any>} ui @param {Paint} c */
+function heightOf(e, w, flags, ui, c) {
+  const key = `${w}:${flags}`;
+  const hit = heights.get(e);
+  if (hit?.key === key) return hit.h;
+  // plain wrap, not the memo: measuring the whole run must not hold every line in memory
+  const h = entryLines(e, ui, c).reduce((n, l) => n + wrap(l, w).length, 0);
+  heights.set(e, { key, h });
+  return h;
+}
+
+/** Header numbers, per entries array (a new one whenever the run grows). @type {WeakMap<Entry[], { sentChars: number, endpoints: string[], results: number }>} */
+const sums = new WeakMap();
+
+/** @param {Entry[]} entries */
+function totals(entries) {
+  let t = sums.get(entries);
+  if (!t) {
+    const out = entries.filter((e) => OUTBOUND.has(e.kind));
+    t = { sentChars: out.reduce((n, e) => n + e.text.length, 0), endpoints: [...new Set(entries.filter((e) => e.kind === 'endpoint').map((e) => e.text))], results: entries.filter((e) => e.kind === 'result').length };
+    sums.set(entries, t);
+  }
+  return t;
 }
 
 /**
@@ -73,35 +122,30 @@ export const transcriptScreen = {
     if (!d.run) return [` ${c('2', 'no agent runs yet')}`];
     const { entries, found } = /** @type {NonNullable<typeof d.data>} */ (d.data);
     const live = d.live.has(d.run.id);
-    const sentChars = entries.filter((/** @type {any} */ e) => OUTBOUND.has(e.kind)).reduce((/** @type {number} */ n, /** @type {any} */ e) => n + e.text.length, 0);
-    const endpoints = [...new Set(entries.filter((/** @type {any} */ e) => e.kind === 'endpoint').map((/** @type {any} */ e) => e.text))];
+    const { sentChars, endpoints, results } = totals(entries);
     /** @type {string[]} */
-    const lines = [
+    const head = [
       `${c('1', d.run.role)}${live ? c('33', '  ● live') : ''}`,
       `sent to   ${endpoints.length ? endpoints.join(', ') : c('2', 'not reported')}`,
-      `outbound  ${num(sentChars)} chars ≈ ${num(sentChars / 4)} tokens (prompt + ${entries.filter((/** @type {any} */ e) => e.kind === 'result').length} tool results)`,
+      `outbound  ${num(sentChars)} chars ≈ ${num(sentChars / 4)} tokens (prompt + ${results} tool results)`,
       ...(found.length ? [c('31', `⚠ ${found.length} possible secret(s) sent: ${found.map((/** @type {any} */ f) => `${f.kind} ${f.preview}`).join(', ')}`)] : [c('32', '✓ no secrets found in outbound')]),
       c('2', 'not shown: the agent CLI\'s system prompt and tool definitions'),
       '',
     ];
-    const label = (/** @type {string} */ color, /** @type {string} */ text) => c(color, `── ${text} ${'─'.repeat(Math.max(0, 40 - text.length))}`);
-    for (const e of entries) {
-      const at = e.at ? c('2', ` ${new Date(e.at).toLocaleTimeString()}`) : '';
-      if (e.kind === 'endpoint') continue;
-      if (e.kind === 'prompt') lines.push(label('36', '→ PROMPT  wololo → model') + at, e.text, '');
-      else if (e.kind === 'sent') lines.push(label('36', '→ SENT  harness → model') + at, e.text, '');
-      else if (e.kind === 'thinking') {
-        if (!ui.hideThinking) lines.push(label('35', '← THINKING') + at, c('2', e.text), '');
-      } else if (e.kind === 'reply') lines.push(label('32', '← REPLY') + at, e.text, '');
-      else if (e.kind === 'call') lines.push(label('33', `← TOOL CALL  ${e.tool}`) + at, e.text, '');
-      else if (e.kind === 'result') {
-        const body = e.text.split('\n');
-        const cut = !ui.fullResults && body.length > RESULT_LINES;
-        lines.push(label(e.error ? '31' : '36', `→ TOOL RESULT  ${e.tool ?? ''} ${num(e.text.length)} chars, sent to the model${e.error ? ' (error)' : ''}`) + at, ...(cut ? [...body.slice(0, RESULT_LINES), c('2', `… ${body.length - RESULT_LINES} more lines (o)`)] : body), '');
-      }
-    }
-    if (live && d.agent?.live && !(ui.hideThinking && d.agent.liveOf === 'thinking')) lines.push(label(d.agent.liveOf === 'reply' ? '32' : '35', `← ${d.agent.liveOf === 'reply' ? 'REPLY' : 'THINKING'}  streaming…`), d.agent.liveOf === 'reply' ? d.agent.live : c('2', d.agent.live));
-    return listDetail({ title: 'Agent runs', rows, at: ui.at, detailTitle: 'Model traffic', detail: lines, scroll: ui.follow ? Number.MAX_SAFE_INTEGER : ui.scroll, clamped: (s) => (ui.scroll = s) }, w, h, c);
+    const tail = live && d.agent?.live && !(ui.hideThinking && d.agent.liveOf === 'thinking') ? [label(c, d.agent.liveOf === 'reply' ? '32' : '35', `← ${d.agent.liveOf === 'reply' ? 'REPLY' : 'THINKING'}  streaming…`), d.agent.liveOf === 'reply' ? d.agent.live : c('2', d.agent.live)] : [];
+    const flags = `${ui.hideThinking ? 1 : 0}${ui.fullResults ? 1 : 0}`;
+    const eager = (/** @type {string[]} */ ls, /** @type {number} */ pw) => {
+      const out = ls.flatMap((l) => wrapped(l, pw));
+      return { h: out.length, lines: () => out };
+    };
+    // one block per entry; only the blocks on screen are built and wrapped
+    const detail = (/** @type {number} */ pw) =>
+      pane([
+        eager(head, pw),
+        ...entries.map((/** @type {Entry} */ e) => ({ h: heightOf(e, pw, flags, ui, c), lines: () => entryLines(e, ui, c).flatMap((l) => wrapped(l, pw)) })),
+        eager(tail, pw),
+      ]);
+    return listDetail({ title: 'Agent runs', rows, at: ui.at, detailTitle: 'Model traffic', detail, scroll: ui.follow ? Number.MAX_SAFE_INTEGER : ui.scroll, clamped: (s) => (ui.scroll = s) }, w, h, c);
   },
   handle(key, d, ui) {
     const pick = (/** @type {number} */ by) => {
