@@ -12,7 +12,7 @@ test('a goal that needs an MCP server nobody configured stops before any agent r
   git(['commit', '-qm', 'brief']);
   const r = wololo(['autopilot', '--goal', 'Read BRIEF.md and add alpha', '--json']);
   assert.equal(r.code, 2, r.out + r.err);
-  assert.match(JSON.parse(r.out).summary, /needs the pixellab MCP server, but claude does not have it here/);
+  assert.match(JSON.parse(r.out).summary, /not started: the goal needs the pixellab MCP server, but claude does not have it for this project\. Add it to \.mcp\.json or ~\/\.claude\.json/);
   assert.deepEqual(prompts(), [], 'no agent spent anything');
 });
 
@@ -38,4 +38,19 @@ test('a step the planner says needs a tool is blocked when the tool is missing; 
   assert.equal(blocked[0].title, 'Add beta');
   assert.match(blocked[0].blockedWhy, /needs the figma MCP server/);
   assert.ok(!existsSync(join(repo, 'beta.js')), 'no builder ran for it');
+});
+
+test('n in the TUI checks the goal before launching it, and says why it did not start', async () => {
+  const { act } = await import('../src/features/watch/actions.js');
+  const { loadConfig } = await import('../src/core/config.js');
+  writeFileSync(join(repo, 'BRIEF.md'), 'Art comes from the `pixellab` MCP server.\n');
+  /** @type {string[][]} */
+  const launched = [];
+  const ctx = /** @type {any} */ ({ root: repo, config: loadConfig(repo), launch: (/** @type {string[]} */ a) => launched.push(a) });
+  const v = /** @type {any} */ ({ alive: false, tasks: [], status: null });
+  const msg = await act('n', v, ctx, 'Read BRIEF.md and finish it');
+  assert.match(msg, /^not started: the goal needs the pixellab MCP server/);
+  assert.deepEqual(launched, [], 'nothing was launched to stop in the background');
+  assert.match(await act('n', v, ctx, 'Add alpha'), /^started: Add alpha/);
+  assert.equal(launched.length, 1);
 });

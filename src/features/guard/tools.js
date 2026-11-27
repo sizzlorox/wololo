@@ -104,6 +104,19 @@ export const missingServers = (servers, root, agent) => {
 };
 
 /**
+ * Can this goal start? Its MCP servers (named in it or in the docs it points at) must be there for the agent.
+ * @param {string} root @param {string} goal @param {string} agent
+ * @returns {string | undefined} why not, and what to do
+ */
+export function goalBlocker(root, goal, agent) {
+  const absent = missingServers(mcpMentions(goalText(root, goal)), root, agent);
+  if (!absent.length) return undefined;
+  const them = absent.length > 1 ? 'them' : 'it';
+  const where = MCP_SOURCES[agent] ? [...MCP_SOURCES[agent].repo, ...MCP_SOURCES[agent].home.map((h) => `~/${h}`)].join(' or ') : MCP_FILES.join(' or ');
+  return `not started: the goal needs the ${absent.join(', ')} MCP server${absent.length > 1 ? 's' : ''}, but ${agent} does not have ${them} for this project. Add ${them} to ${where}, then start the goal again. (A server set up for another CLI or another project does not count.)`;
+}
+
+/**
  * Servers no agent of this step called, judged from the transcripts of its runs.
  * @param {string} root @param {string[]} servers @param {{ task?: string, since: number }} scope
  */

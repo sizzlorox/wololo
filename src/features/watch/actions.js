@@ -4,6 +4,7 @@ import { ensureDir } from '../../core/files.js';
 import { statePath } from '../../core/state.js';
 import { commands as boardCommands } from '../board/command.js';
 import { readTask, writeTask } from '../board/store.js';
+import { goalBlocker } from '../guard/tools.js';
 
 const board = Object.fromEntries(boardCommands.map((c) => [c.name, c]));
 
@@ -89,6 +90,9 @@ export async function act(key, v, ctx, text) {
   if (key === 'x') return v.status && stop(v.status.pid) ? 'stopped the run' : 'could not stop the run';
   if (key === 'n') {
     if (!text?.trim()) return '';
+    // check here, before launching: a run that stops at once in the background looked like nothing happened
+    const blocked = goalBlocker(ctx.root, text.trim(), ctx.config.autopilot.agent);
+    if (blocked) return blocked;
     run(['autopilot', '--goal', text.trim(), '--plan']);
     return `started: ${text.trim()}`;
   }
