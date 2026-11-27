@@ -7,7 +7,7 @@ import { argvFor } from '../src/features/tui/screens/commands.js';
 import { flatten, parseValue } from '../src/features/tui/screens/config.js';
 import { setAt } from '../src/features/tui/settings.js';
 import { spark } from '../src/features/tui/screens/usage.js';
-import { painter, width } from '../src/features/watch/widgets.js';
+import { fit as fitTo, painter, width } from '../src/features/watch/widgets.js';
 
 test('decode splits a chunk into keys: arrows, enter, esc, typed text; unknown escapes are dropped', () => {
   assert.deepEqual(decode('\x1b[A\x1b[Bab\r'), ['up', 'down', 'a', 'b', 'enter']);
@@ -130,4 +130,32 @@ test('blocked steps say why: next to the step, in a "Needs you" panel with what 
   assert.match(out, /Run the year-40 check[\s\S]*takes longer than an agent may run/, 'the full reason in the panel');
   assert.match(out, /r retry · s skip · enter details/);
   assert.match(details(blocked, 100, 20), /blocked: the builder kept waiting on/);
+});
+
+test('width counts screen columns: tabs, CJK and emoji are wider than one; fitting never exceeds the width', () => {
+  assert.equal(width('abc'), 3);
+  assert.equal(width('日本'), 4, 'CJK takes two columns each');
+  assert.equal(width('ok 🎉'), 5, 'emoji take two');
+  assert.equal(width('a\tb'), 4, 'a tab is shown as two spaces');
+  assert.equal(width('é'), 1, 'combining marks take none');
+  for (const s of ['日本語のテキストがとても長い場合', '🎉🎉🎉🎉🎉🎉🎉🎉', 'tabs\tand\tmore\ttabs', 'plain ascii that is long enough']) {
+    for (const w of [5, 8, 13]) assert.ok(width(fitTo(s, w)) <= w, `${JSON.stringify(s)} at ${w}: ${width(fitTo(s, w))}`);
+  }
+});
+
+test('step details wrap the description and notes instead of cutting them, scroll, and never overflow', async () => {
+  const { details } = await import('../src/features/watch/render.js');
+  const long = 'Wire per-villager needs into the simulation tick so hunger, warmth and rest decay every tick and villagers act on the most urgent one; verify with the needs tests and a 5 year run.';
+  const t = /** @type {any} */ ({ id: 'g-01', title: 'Wire needs 日本 🎉', status: 'blocked', blockedOn: 'human', blockedWhy: 'did not converge in 5 iterations', group: 'g', body: `${long}\n\tindented with a tab`, notes: Array.from({ length: 8 }, (_, i) => `2026-11-27T10:0${i}:00.000Z note ${i}: ${long}`) });
+  const w = 50;
+  const page = details(t, w, 200).split('\n');
+  for (const l of page) assert.ok(width(l) <= w, `fits ${w}: ${l}`);
+  const text = page.join(' ').replace(/\s+/g, ' ');
+  assert.match(text, /verify with the needs tests and a 5 year run\./, 'the end of the description is shown, not cut');
+  assert.match(text, /note 7: Wire per-villager/, 'notes are shown');
+  const top = details(t, w, 12).split('\n');
+  assert.equal(top.length, 12, 'fits the height');
+  assert.match(top.at(-1) ?? '', /pgdn/, 'says there is more');
+  const scrolled = details(t, w, 12, 20).split('\n');
+  assert.notDeepEqual(scrolled, top, 'pgdn scrolls');
 });

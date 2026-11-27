@@ -227,17 +227,27 @@ function runBody(stats) {
  * @param {number} w
  * @param {number} h
  */
-export function details(t, w, h) {
+export function details(t, w, h, scroll = 0) {
   const state = t.status === 'blocked' ? `blocked on ${t.blockedOn ?? '?'}` : t.status;
   const why = t.status === 'blocked' ? blockReason(t) : '';
-  const head = [` ${t.title}`, ` ${state} · ${t.id}${t.agent ? ` · ${t.agent}` : ''}`, ...(why ? wrapText(`blocked: ${why}`, w - 2).map((l) => ` ${l}`) : []), ...(t.deps?.length ? [` needs: ${t.deps.join(', ')}`] : []), ...(t.touches?.length ? [` changes: ${t.touches.join(', ')}`] : []), ''];
-  const body = (t.body || '(no description)').split('\n').map((l) => ` ${l}`);
-  const notes = t.notes.length ? ['', ' notes:', ...t.notes.map((n) => `  ${n}`)] : [];
-  const foot = ['', ' esc back'];
-  const room = Math.max(0, h - head.length - foot.length);
-  const top = body.slice(0, Math.max(3, room - notes.length));
-  const lines = [...head, ...top, ...notes.slice(Math.max(0, notes.length - (room - top.length)))];
-  return [...lines.slice(0, h - foot.length), ...foot].map((l) => fit(l, w)).join('\n');
+  const wrapped = (/** @type {string} */ s, indent = ' ') => wrapText(s, w - indent.length).map((l) => `${indent}${l}`);
+  const lines = [
+    ...wrapped(t.title),
+    ...wrapped(`${state} · ${t.id}${t.agent ? ` · ${t.agent}` : ''}`),
+    ...(why ? wrapped(`blocked: ${why}`) : []),
+    ...(t.deps?.length ? wrapped(`needs: ${t.deps.join(', ')}`) : []),
+    ...(t.touches?.length ? wrapped(`changes: ${t.touches.join(', ')}`) : []),
+    '',
+    ...wrapped(t.body || '(no description)'),
+    // newest first: the latest notes are the ones that matter, right under the description
+    ...(t.notes.length ? ['', ' notes, newest first:', ...[...t.notes].reverse().flatMap((n) => wrapped(n, '  '))] : []),
+  ];
+  const room = Math.max(1, h - 2);
+  const from = Math.max(0, Math.min(scroll, lines.length - room));
+  const shown = lines.slice(from, from + room);
+  const more = from + room < lines.length;
+  const foot = ['', ` esc back${from > 0 || more ? ` · pgup/pgdn scroll${more ? ` (${lines.length - from - room} more lines)` : ''}` : ''}`];
+  return [...shown, ...foot].map((l) => fit(l, w)).join('\n');
 }
 
 /** One block per parallel worker: its step, agent, time, tokens and what it is thinking. @param {View} v @param {import('./widgets.js').Paint} c @param {number} inner */

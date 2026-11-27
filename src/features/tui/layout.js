@@ -1,4 +1,4 @@
-import { box, columns, fit, pad, width } from '../watch/widgets.js';
+import { box, clean, columns, cut, fit, pad, width } from '../watch/widgets.js';
 
 /**
  * Shared TUI layout: a selectable list beside a detail pane, and wrapped text for details.
@@ -25,22 +25,23 @@ export function windowOf(n, at, room) {
  * @param {string} text @param {number} w
  */
 export function wrap(text, w) {
-  if (w <= 4) return text.split('\n');
+  if (w <= 4) return clean(text).split('\n');
   /** @type {string[]} */
   const out = [];
-  for (const line of text.split('\n')) {
-    const lead = /^\s*/.exec(line)?.[0] ?? '';
+  for (const raw of clean(text).split('\n')) {
+    const lead = /^\s*/.exec(raw)?.[0] ?? '';
     // indentation keeps at most half the width: wider, and no text would fit after it, forever
     const indent = lead.length <= w / 2 ? lead : ' '.repeat(Math.floor(w / 2));
-    let rest = line.slice(lead.length);
+    let rest = raw.slice(lead.length);
     if (!rest) {
       out.push('');
       continue;
     }
     while (width(indent + rest) > w) {
       const room = w - indent.length;
-      const cut = rest.lastIndexOf(' ', room);
-      const at = cut > room / 3 ? cut : room;
+      const fits = cut(rest, room);
+      const space = fits.lastIndexOf(' ');
+      const at = space > fits.length / 3 ? space : fits.length || 1;
       out.push(indent + rest.slice(0, at));
       rest = rest.slice(at).trimStart();
     }

@@ -65,15 +65,16 @@ test('retry, redo and skip act on the selected step only; add slots a step after
   assert.deepEqual(launched.at(-1), ['autopilot', '--goal', 'Add a church', '--plan']);
 });
 
-test('details shows why a step is blocked and its notes, newest last, within the screen', () => {
+test('details shows why a step is blocked and its notes, newest first, within the screen; older ones a scroll away', () => {
   const t = /** @type {any} */ ({ id: 'x', title: 'Day/night', status: 'blocked', blockedOn: 'human', body: 'Create src/time/mod.rs', notes: Array.from({ length: 50 }, (_, i) => `note ${i}`), group: 'g' });
   const out = details(t, 80, 20);
   assert.match(out, /Day\/night/);
   assert.match(out, /blocked on human/);
   assert.match(out, /Create src\/time\/mod\.rs/);
   assert.match(out, /note 49/, 'latest note shown');
-  assert.doesNotMatch(out, /note 0\b/, 'old notes trimmed to fit');
+  assert.doesNotMatch(out, /note 0\b/, 'old notes do not crowd the first screen');
   assert.ok(out.split('\n').length <= 20);
+  assert.match(details(t, 80, 20, 100), /note 0\b/, 'the oldest is reachable by scrolling, not lost');
 });
 
 test('a status that lost its plan name still resumes the newest plan', async () => {

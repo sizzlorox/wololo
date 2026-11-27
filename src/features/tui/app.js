@@ -140,8 +140,9 @@ export async function runApp(ctx, opts) {
   /** the last frame written: unchanged frames are skipped */
   let last = '';
   const draw = () => {
-    const w = out.columns || 100;
-    const h = out.rows || 30;
+    // Some terminals and multiplexers do not report a size: never assume wider than is likely there
+    const w = out.columns || Number(process.env.COLUMNS) || 80;
+    const h = out.rows || Number(process.env.LINES) || 24;
     const screen = screens[active];
     const ui = uis[screen.id];
     let data;

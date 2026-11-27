@@ -2,14 +2,49 @@
 
 const ANSI = /\x1b\[[0-9;?]*[a-zA-Z]/g;
 
-/** @param {string} s */
-export const width = (s) => s.replace(ANSI, '').length;
+/**
+ * Screen columns one character takes: 0 for combining marks and zero-width joiners, 2 for wide
+ * East Asian characters and emoji, 1 otherwise. Counting characters instead made text with CJK or
+ * emoji wider than measured, and it overflowed its panel.
+ * @param {string} ch  one code point
+ */
+function cols(ch) {
+  const c = /** @type {number} */ (ch.codePointAt(0));
+  if (c === 0x200d || c === 0xfe0f || (c >= 0x300 && c <= 0x36f) || (c >= 0x20d0 && c <= 0x20ff)) return 0;
+  if (/\p{Extended_Pictographic}/u.test(ch) && c > 0x2bff) return 2;
+  if ((c >= 0x1100 && c <= 0x115f) || (c >= 0x2e80 && c <= 0xa4cf) || (c >= 0xac00 && c <= 0xd7a3) || (c >= 0xf900 && c <= 0xfaff) || (c >= 0xfe30 && c <= 0xfe4f) || (c >= 0xff00 && c <= 0xff60) || (c >= 0xffe0 && c <= 0xffe6) || (c >= 0x20000 && c <= 0x3fffd)) return 2;
+  return 1;
+}
 
-/** Truncate by visible characters; a cut line loses its colors rather than leak them. @param {string} s @param {number} w */
+/** Tabs as two spaces; other control characters (not ANSI escapes) dropped: they have no fixed width. @param {string} s */
+export const clean = (s) => s.replace(/\t/g, '  ').replace(/[\x00-\x08\x0b-\x1a\x1c-\x1f\x7f]/g, '');
+
+/** Screen columns a string takes, ANSI colours not counted. @param {string} s */
+export const width = (s) => {
+  let n = 0;
+  for (const ch of clean(s).replace(ANSI, '')) n += cols(ch);
+  return n;
+};
+
+/** The longest start of plain (uncoloured) text that fits in w columns. @param {string} plain @param {number} w */
+export function cut(plain, w) {
+  let out = '';
+  let n = 0;
+  for (const ch of plain) {
+    const k = cols(ch);
+    if (n + k > w) break;
+    out += ch;
+    n += k;
+  }
+  return out;
+}
+
+/** Truncate by screen columns; a cut line loses its colours rather than leak them. @param {string} s @param {number} w */
 export function fit(s, w) {
   if (w <= 0) return '';
-  const plain = s.replace(ANSI, '');
-  return plain.length > w ? `${plain.slice(0, w - 1)}…` : s;
+  const tidy = clean(s);
+  if (width(tidy) <= w) return tidy;
+  return `${cut(tidy.replace(ANSI, ''), w - 1)}…`;
 }
 
 /** Fit, then pad with spaces to exactly `w` visible characters. @param {string} s @param {number} w */

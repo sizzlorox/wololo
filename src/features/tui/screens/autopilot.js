@@ -37,25 +37,30 @@ export const autopilot = {
     return { ...v, selected: ui.selected, choice: modelChoice(ctx.root) };
   },
   keys(v, ui) {
-    if (ui.details) return [{ key: 'esc', label: 'back' }];
+    if (ui.details) return [{ key: 'esc', label: 'back' }, { key: 'pgup/dn', label: 'scroll' }];
     const c = v.choice;
     return [...runKeys(v).filter((k) => k.key !== 'q'), ...(c.agent ? [{ key: 'm', label: `${c.agent}: ${c.model || 'default model'}` }] : [])];
   },
   render(v, ui, w, h) {
     const t = selectedTask(v);
-    if (ui.details && t) return details(t, w, h).split('\n');
+    if (ui.details && t) return details(t, w, h, ui.detailScroll ?? 0).split('\n');
     ui.details = false;
     return render({ ...v, width: w, height: h, color: true }).split('\n');
   },
   async handle(key, v, ui, app) {
     if (ui.details) {
       if (key === 'esc' || key === 'enter') ui.details = false;
+      else if (key === 'pgdn' || key === 'down' || key === 'j') ui.detailScroll = (ui.detailScroll ?? 0) + (key === 'pgdn' ? 10 : 1);
+      else if (key === 'pgup' || key === 'up' || key === 'k') ui.detailScroll = Math.max(0, (ui.detailScroll ?? 0) - (key === 'pgup' ? 10 : 1));
       return;
     }
     const i = v.tasks.findIndex((/** @type {any} */ t) => t.id === ui.selected);
     if (key === 'up' || key === 'k') ui.selected = v.tasks[Math.max(0, i - 1)]?.id ?? ui.selected;
     else if (key === 'down' || key === 'j') ui.selected = v.tasks[Math.min(v.tasks.length - 1, i + 1)]?.id ?? ui.selected;
-    else if (key === 'enter') ui.details = Boolean(selectedTask(v));
+    else if (key === 'enter') {
+      ui.details = Boolean(selectedTask(v));
+      ui.detailScroll = 0;
+    }
     else if (key === 'g' && (v.groups?.length ?? 0) > 1) {
       ui.group = v.groups[(v.groups.indexOf(v.group ?? v.status?.group ?? '') + 1) % v.groups.length];
       ui.selected = undefined;
