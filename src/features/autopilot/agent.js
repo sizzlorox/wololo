@@ -207,6 +207,8 @@ export async function runAgent(ctx, argv, role, log, meta = {}) {
   const beat = setInterval(() => log(`${role} still running (${Math.round((Date.now() - started) / 60_000)}m): ${progress(ctx.root, base)}${last ? `; last: ${last}` : ''}`), HEARTBEAT_MS);
   const r = await run(argv, {
     cwd: ctx.root,
+    // marks everything the agent runs: it may raise the verification bar, never approve a lower one
+    env: { WOLOLO_AGENT: '1' },
     timeoutMs: minutes > 0 ? minutes * 60_000 : undefined,
     signal: abort.signal,
     onData: (chunk) => {

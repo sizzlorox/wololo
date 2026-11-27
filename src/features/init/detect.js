@@ -2,6 +2,9 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJson, readText } from '../../core/files.js';
 
+/** Port a detected dev server is asked to use, so the app check knows where to look. */
+const PORT = 5199;
+
 /**
  * Seed verify steps and CI setup steps (raw GitHub Actions step YAML) from what the project already has. Deterministic; no guessing beyond files on disk.
  * @param {string} root
@@ -36,7 +39,13 @@ export function detect(root) {
     if (test && !/no test specified/.test(scripts[test])) steps.push({ name: 'test', run: run(test) });
     if (build) steps.push({ name: 'build', run: run(build) });
     if (e2e) steps.push({ name: 'e2e', run: run(e2e) });
+    const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+    // something people look at: open it, or a renderer that draws nothing passes every test
+    if (deps.electron) steps.push({ name: 'app', app: { start: `${pm} start`, window: '*' } });
+    else if (deps.vite && has('index.html')) steps.push({ name: 'app', app: { start: `npx vite --port ${PORT} --strictPort`, url: `http://localhost:${PORT}/` } });
+    else if (deps.next) steps.push({ name: 'app', app: { start: `npx next dev -p ${PORT}`, url: `http://localhost:${PORT}/` } });
   }
+  if (!steps.some((s) => s.app) && has('index.html') && !has('package.json')) steps.push({ name: 'app', app: { url: 'index.html' } });
   const py = readText(join(root, 'pyproject.toml'));
   if (py !== undefined || has('requirements.txt') || has('setup.py')) {
     stack.push('python');
@@ -45,10 +54,18 @@ export function detect(root) {
     if (py?.includes('ruff')) steps.push({ name: 'lint', run: `${prefix}ruff check .`, fast: true });
     if (py?.includes('mypy')) steps.push({ name: 'typecheck', run: `${prefix}mypy .`, fast: true });
     if (py?.includes('pytest') || has('tests') || has('pytest.ini')) steps.push({ name: 'test', run: `${prefix}pytest -q` });
+    const reqs = `${py ?? ''}\n${readText(join(root, 'requirements.txt')) ?? ''}`;
+    if (/\b(pygame|pyglet|arcade|kivy|PySide6|PyQt[56])\b/i.test(reqs) && has('main.py')) steps.push({ name: 'app', app: { start: `${prefix}python main.py`, window: '*' } });
   }
   if (has('Cargo.toml')) {
     stack.push('rust');
     steps.push({ name: 'fmt', run: 'cargo fmt --check', fast: true }, { name: 'clippy', run: 'cargo clippy --all-targets -- -D warnings', timeoutSec: 3600 }, { name: 'test', run: 'cargo test', timeoutSec: 3600 });
+    // a window: cargo run compiles first, so give it time to appear
+    if (/^\s*(bevy|macroquad|ggez|winit|eframe|egui|iced|piston|sdl2|raylib|tauri|minifb|pixels)\s*=/m.test(readText(join(root, 'Cargo.toml')) ?? '')) steps.push({ name: 'app', app: { start: 'cargo run', window: '*', readyMs: 900_000 } });
+  }
+  if (has('project.godot')) {
+    stack.push('godot');
+    steps.push({ name: 'app', app: { start: 'godot --path .', window: '*' } });
   }
   if (has('go.mod')) {
     stack.push('go');

@@ -1,6 +1,8 @@
+import { raise } from '../guard/lock.js';
 import { spawn } from '../../core/proc.js';
 import { git, gitOut } from '../../core/git.js';
 import { heads, listRepos, repoDir, resetTo } from '../../core/repos.js';
+import { refreshConfig } from './adopt.js';
 import { mirrorWorkspace } from './mirror.js';
 import { removeWorktree } from '../../core/worktree.js';
 import { existsSync, mkdirSync, openSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -265,6 +267,10 @@ export async function runParallel(ctx, group, opts) {
       }
       if (!problem) {
         state('gate on the merged result');
+        // checks the step brought (a test suite, an app to open) join the gate before it judges the merge
+        ctx = refreshConfig(ctx, log);
+        // only the config: anything else uncommitted in the main checkout is not ours to commit
+        if (gitOut(root, ['status', '--porcelain', '--', CONFIG_FILE])) git(root, ['commit', '-qm', 'wololo: verification grew with the project', '--', CONFIG_FILE]);
         const gate = await judgedGate(ctx, { goal: [t.title, t.body].filter(Boolean).join('\n\n'), base: before, spawn: (role, prompt) => runAgent(ctx, agentArgv(ctx.config, opts.agent, prompt, { root }), `${role} · ${t.title}`, log) });
         if (!gate.ok) {
           resetTo(root, before); // uncommitted work was committed before the merge: this only undoes the merge
@@ -273,6 +279,7 @@ export async function runParallel(ctx, group, opts) {
       }
       if (!problem) {
         removeStep(id);
+        raise(ctx, `autopilot: merged ${id}`);
         await board['task note'].run({ id, note: `autopilot: merged into ${main}` }, ctx);
         post(root, group, { from: 'wololo', title: 'wololo', text: `"${t.title}" (${id}) is merged into ${main}${t.touches?.length ? ` (changed ${t.touches.join(', ')})` : ''}. If your step uses it, run \`git merge ${main}\` in your worktree.` });
         recordEvent(root, { type: 'merge', ok: true, task: id, attempts: attempt + 1 });

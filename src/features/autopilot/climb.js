@@ -1,4 +1,6 @@
+import { seenByPeople } from '../guard/coverage.js';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { listShots } from '../verify/app/run.js';
 import { diffHint } from '../../core/repos.js';
 import { ensureDir } from '../../core/files.js';
 import { commitAll, heads, resetTo } from '../../core/repos.js';
@@ -13,9 +15,9 @@ const TARGET = 0.95;
 
 /**
  * @param {string} bin @param {string} goal @param {string} base
- * @param {{ id: string, question?: string }[]} questions @param {string} path
+ * @param {{ id: string, question?: string }[]} questions @param {string} path @param {string[]} [shots]  what the app checks saw
  */
-export function judgePrompt(bin, goal, base, questions, path) {
+export function judgePrompt(bin, goal, base, questions, path, shots = []) {
   return [
     'You are the judge in an autopilot loop. Do not change any file and do not commit.',
     '',
@@ -26,6 +28,9 @@ export function judgePrompt(bin, goal, base, questions, path) {
     '',
     `The change: ${diffHint(base)} (its commits plus the working tree).`,
     '',
+    ...(shots.length
+      ? ['What the app showed when wololo opened it (screenshots, or terminal text). Open each file and look at it as the person using the app would; placeholder, broken, missing or blank visuals mean the step is not done:', ...shots.map((s) => `- ${s}`), '']
+      : []),
     'Questions:',
     ...questions.map((q) => `- ${q.id}: ${q.question ?? q.id}`),
     '',
@@ -76,7 +81,7 @@ export async function judgeNow(ctx, o) {
   ensureDir(statePath(root));
   rmSync(path, { force: true });
   const state = snapshot(root); // what is judged: the judge must not change files, so this is it
-  await o.spawn('judge', judgePrompt(config.bin, o.goal, o.base, questions, path));
+  await o.spawn('judge', judgePrompt(config.bin, o.goal, o.base, questions, path, listShots(root)));
   try {
     const j = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {};
     const scores = Object.fromEntries(Object.entries(j.scores ?? {}).filter(([k, v]) => questions.some((q) => q.id === k) && typeof v === 'number').map(([k, v]) => [k, clamp(v)]));
@@ -104,10 +109,10 @@ export const pendingJudgmentOnly = (gate) => {
  * @param {{ goal?: string, base: string, spawn: (role: string, prompt: string) => Promise<unknown> }} o
  */
 export async function judgedGate(ctx, o) {
-  const gate = await runGate(ctx, { judge: judgedScores(ctx.root) });
+  const gate = await runGate(ctx, { judge: judgedScores(ctx.root), base: o.base, visual: seenByPeople(o.goal ?? '') });
   if (!pendingJudgmentOnly(gate) || !o.goal) return gate;
   await judgeNow(ctx, { goal: o.goal, base: o.base, spawn: o.spawn });
-  return runGate(ctx, { judge: judgedScores(ctx.root) });
+  return runGate(ctx, { judge: judgedScores(ctx.root), base: o.base, visual: seenByPeople(o.goal ?? '') });
 }
 
 /** @param {string} bin @param {string} goal @param {{ id: string, question?: string, note: string }} c */

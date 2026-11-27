@@ -4,6 +4,7 @@
     { "id": "verify", "type": "verify", "weight": 4 },
     { "id": "constraints", "type": "check", "weight": 2 },
     { "id": "intent", "type": "judgment", "weight": 2, "question": "Does the change do exactly what was asked, verified by actually running it, with no scope creep? 1 = yes, demonstrably." },
-    { "id": "craft", "type": "judgment", "weight": 1, "question": "Would the head chef sign this? Small pieces, one way to do each thing, names that explain, tests that can fail." }
+    { "id": "craft", "type": "judgment", "weight": 1, "question": "Would the head chef sign this? Small pieces, one way to do each thing, names that explain, tests that can fail." },
+    { "id": "looks", "type": "judgment", "weight": 2, "question": "Open every screenshot wololo kept and judge what a person would see. Does it look finished and right: real art and text, nothing placeholder, broken, missing or blank? 1 = yes. If the step changes nothing people see, 1." }
   ]
 }

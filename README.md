@@ -94,6 +94,20 @@ It stops when stuck and blocks that step; press `r` to retry or `s` to skip. Res
 
 Headless agents run with full permissions (e.g. Claude `bypassPermissions`). Use autopilot only on code and machines you're willing to let an agent change.
 
+## Verification grows, never shrinks
+
+Agents take shortcuts to get a green gate. wololo makes the gate stricter on its own as the project grows, and only you can make it weaker.
+
+- **It grows with the project.** When the project gains a test suite, typecheck, build or an app, autopilot adds that check to the gate on its own. Run `wololo verify adopt` to do it yourself. If the project has a check the gate doesn't run, the gate fails (`coverage`).
+- **It never shrinks without you (`ratchet`).** wololo locks what the gate rests on: its steps, the scripts and files they run, test-runner configs, the rubric, and how many assertions each test file has. Adding is fine. Removing a step, rewriting it, editing a gate script, deleting a test or thinning its assertions fails the gate until you accept it with `wololo verify approve` (or `a` on the Health tab). Agents can't approve.
+- **It opens what was built and looks.** An `app` step runs the thing the way a person would and keeps what it saw:
+  - `{"app": {"start": "npx vite --port 5199", "url": "http://localhost:5199/", "expect": "canvas"}}`: a headless Chrome or Edge. Fails on errors, assets that 404, or the element missing or blank.
+  - `{"app": {"start": "cargo run", "window": "My Game"}}`: a desktop app or game. Captures its window; fails if it crashes, never opens a window, or the window is blank.
+  - `{"app": {"start": "mytool report", "expect": "Total"}}`: a CLI. Its output is the screen; fails on a crash, no output, or missing text.
+
+  wololo detects the app for Vite, Next, Electron, static sites, Rust GUI crates, pygame and Godot. A step about what people see (UI, sprites, rendering…) can't pass until some step opens the app. The judge gets the screenshots under the rubric's `looks` criterion, and they're noted on the task for you.
+- **Tools are checked before and after a step.** If the goal or a step names an MCP server ("use the `pixellab` MCP"), autopilot checks the agent it runs actually has it, for this project, before starting. Before landing, it checks the step's transcripts actually called it. A stand-in made some other way is blocked.
+
 **Parallel:** set `autopilot.workers` > 1.
 - Steps that don't touch the same files build at once, each in its own git worktree.
 - Branches merge one at a time through the gate. A merger agent resolves conflicts.

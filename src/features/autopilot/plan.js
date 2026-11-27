@@ -59,17 +59,19 @@ export async function plan(ctx, agent, goal) {
   const id = (/** @type {number} */ i) => `${group}-${String(i + 1).padStart(2, '0')}`;
   // Without deps from the planner, each step needs the one before it: the safe, serial reading.
   const declared = steps.some((/** @type {any} */ s) => Array.isArray(s.deps));
-  steps.forEach((/** @type {{ title: string, body?: string, deps?: unknown, touches?: unknown }} */ s, /** @type {number} */ i) => {
+  steps.forEach((/** @type {{ title: string, body?: string, deps?: unknown, touches?: unknown, tools?: unknown }} */ s, /** @type {number} */ i) => {
     const title = truncate(s.title, 120);
     const deps = declared
       ? (Array.isArray(s.deps) ? s.deps : []).map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= i).map((n) => id(n - 1))
       : i ? [id(i - 1)] : [];
     const touches = Array.isArray(s.touches) ? s.touches.filter((t) => typeof t === 'string' && t.trim()).map((t) => t.trim()) : [];
+    const tools = Array.isArray(s.tools) ? s.tools.filter((t) => typeof t === 'string' && t.trim()).map((t) => t.trim()) : [];
     writeTask(root, {
       id: id(i),
       title,
       deps,
       touches,
+      ...(tools.length ? { tools } : {}),
       group,
       body: typeof s.body === 'string' ? s.body : '',
       status: 'todo',

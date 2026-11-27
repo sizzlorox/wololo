@@ -1,3 +1,7 @@
+import { statSync } from 'node:fs';
+import { raise } from '../guard/lock.js';
+import { listShots } from '../verify/app/run.js';
+import { goalText, mcpMentions, missingServers, stepTools, unusedServers } from '../guard/tools.js';
 import { changedSince, commitAll, commitsSince as since, dirty, heads, snapshot } from '../../core/repos.js';
 import { sh } from '../../core/exec.js';
 import { recordEvent } from '../../core/state.js';
@@ -135,10 +139,16 @@ export async function runLoop(ctx, opts) {
   };
 
   const base = heads(root);
+  const started = Date.now();
   if (task) {
     const claimed = await board['task claim'].run({ id: task.id, agent: `autopilot:${opts.agent}` }, ctx);
     if (!claimed.ok) return claimed;
   }
+  // a tool the step depends on must be there, or the agent writes a stand-in and calls it done
+  const goalServers = mcpMentions(goalText(root, task?.goal ?? opts.goal ?? ''));
+  const servers = stepTools(task ?? { title: opts.goal ?? '' }, goalServers);
+  const absent = missingServers(servers, root, opts.agent);
+  if (absent.length) return fail(`this step needs the ${absent.join(', ')} MCP server${absent.length > 1 ? 's' : ''}, which ${opts.agent} does not have here (looked in this repo's MCP files and ${opts.agent}'s own settings for this project). Add it, then retry; if the step does not need it, edit the step so it does not name it`, { iterations: 0, findings: 0 });
   if (opts.goal) {
     log(`builder: ${opts.goal.split('\n')[0]}`);
     let built = await spawnAgent('builder', builderPrompt(config.bin, opts.goal, { handoff: opts.handoff, rules, peers: opts.peers }));
@@ -178,17 +188,23 @@ export async function runLoop(ctx, opts) {
     const left = dirtyFiles(root);
     const guard = protectedHere(root, config.autopilot.protectedBranches);
     if (guard) return fail(guard, { iterations: i, findings });
+    const unused = unusedServers(root, servers, { task: task?.id, since: started });
+    if (unused.length) return fail(`this step depends on ${unused.join(', ')}, but no agent called ${unused.length > 1 ? 'them' : 'it'} (checked every tool call in this step's transcripts). Work that should come from a tool was made some other way; redo it with the tool, or edit the step if it does not need it`, { iterations: i, findings });
     if (left.length) {
       const title = (task?.title ?? opts.goal?.split('\n')[0] ?? 'autopilot').slice(0, 100);
       const done = commitAll(root, `${title} (autopilot: landed, gate green)`);
       log(done.length ? `committed ${left.length} file(s) the agents left uncommitted${done[0] === '.' ? '' : ` (${done.join(', ')})`}` : 'could not commit what the agents left');
     }
+    // landed green: whatever verification it added is the bar from now on (a worker's lands at merge)
+    if (!process.env.WOLOLO_WORKER) raise(ctx, `autopilot: ${task?.id ?? 'goal'}`);
     let merged = '';
     if (opts.merge) {
       const m = await sh(config.autopilot.mergeCommand, { cwd: root });
       merged = m.code === 0 ? 'merged' : `merge failed: ${tail(m.stderr, 5)}`;
     }
-    const summary = `landed after ${i} iteration(s), ${findings} verifier finding(s)${caveat ? ` (${caveat})` : ''}${merged ? `; ${merged}` : ''}`;
+    // what it looked like when it landed, for a human sampling the work (Review tab, or open the file)
+    const shots = listShots(root).filter((f) => statSync(f).mtimeMs >= started);
+    const summary = `landed after ${i} iteration(s), ${findings} verifier finding(s)${caveat ? ` (${caveat})` : ''}${merged ? `; ${merged}` : ''}${shots.length ? `; screenshots: ${shots.join(', ')}` : ''}`;
     recordEvent(root, { type: 'autopilot', ok: true, iterations: i, findings, agent: opts.agent });
     await onTask('task done', { note: `autopilot: ${summary}` });
     return { ok: true, summary, data: { iterations: i, findings } };

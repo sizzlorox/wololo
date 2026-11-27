@@ -226,7 +226,7 @@ if (process.argv[2].includes('You are the builder')) fs.writeFileSync('package.j
   rmSync(join(repo, 'package.json'));
   setup({}, { verify: { steps: [], timeoutSec: 60 } });
   const r = wololo(['autopilot', '--goal', 'Add alpha', '--max', '2']);
-  assert.match(r.out + r.err, /adopted verify steps: test/);
+  assert.match(r.out + r.err, /verification grew with the project: test/);
   assert.deepEqual(JSON.parse(readFileSync(join(repo, 'wololo.config.json'), 'utf8')).verify.steps.map((/** @type {{name: string}} */ s) => s.name), ['test']);
   assert.match(r.out + r.err, /gate green/, 'the reloaded config is what the gate runs');
 });

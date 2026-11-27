@@ -48,7 +48,8 @@ export const health = {
     return { last, parts };
   },
   keys(d) {
-    return [...RUNS.map(({ key, label }) => ({ key, label })), ...(d.parts.length ? [{ key: '↑↓', label: 'part' }, { key: 'pgup/dn', label: 'scroll' }] : [])];
+    const weaker = d.last?.failed?.includes('ratchet');
+    return [...RUNS.map(({ key, label }) => ({ key, label })), ...(weaker ? [{ key: 'a', label: 'accept weaker checks…' }] : []), ...(d.parts.length ? [{ key: '↑↓', label: 'part' }, { key: 'pgup/dn', label: 'scroll' }] : [])];
   },
   render(d, ui, w, h, c) {
     const paint = (/** @type {string} */ s) => (/^(PASS|✓)/.test(s) ? c('32', s) : /^(FAIL|✗|broken)/.test(s) || /\berror\b/.test(s) ? c('31', s) : s);
@@ -64,6 +65,17 @@ export const health = {
     if (key === 'down' || key === 'j') return void ((ui.at = moveIn(ui.at, 1, d.parts.length)), (ui.scroll = 0));
     if (key === 'pgdn') return void (ui.scroll = (ui.scroll ?? 0) + 10);
     if (key === 'pgup') return void (ui.scroll = Math.max(0, (ui.scroll ?? 0) - 10));
+    if (key === 'a' && d.last?.failed?.includes('ratchet')) {
+      // only a person can lower the bar: say what it lowers, then ask
+      const gate = await app.exec(['gate']);
+      const weakened = items(gate.details ?? []).find((p) => p.head === 'FAIL ratchet')?.lines.filter((l) => l.trim() && !/^Verification only grows/.test(l)) ?? [];
+      if (!weakened.length) return 'nothing is weakened now: the gate does not need an approval';
+      app.confirm(`Accept a weaker gate? ${weakened.join('; ')}`, async () => {
+        const r = await app.exec(['verify', 'approve']);
+        return r.summary;
+      });
+      return;
+    }
     const run = RUNS.find((x) => x.key === key);
     if (!run) return;
     const started = Date.now();

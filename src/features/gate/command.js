@@ -3,12 +3,14 @@ import { recordEvent, wololoPath } from '../../core/state.js';
 import { formatViolation, runCheck } from '../check/engine.js';
 import { runScore } from '../score/command.js';
 import { runSync } from '../sync/command.js';
-import { runVerify } from '../verify/command.js';
+import { allSteps, runVerify } from '../verify/command.js';
+import { ratchet } from '../guard/lock.js';
+import { uncovered } from '../guard/coverage.js';
 
 /**
  * The merge gate: the single answer to "can this agent merge its own code?"
  * @param {import('../../core/types.js').Ctx} ctx
- * @param {{ judge?: Record<string, number> }} [opts]
+ * @param {{ judge?: Record<string, number>, base?: string, visual?: boolean }} [opts]  base: where this task started (a parallel worker's ratchet compares against it); visual: the step changes what people see
  */
 export async function runGate(ctx, opts = {}) {
   /** @type {{ name: string, ok: boolean, detail: string[] }[]} */
@@ -37,6 +39,20 @@ export async function runGate(ctx, opts = {}) {
       detail: ok ? [] : [`score ${score.total} < ${ctx.config.gate.minScore}${pendingBlocks ? ` or pending judgment: ${score.pending.join(', ')}` : ''}${score.weakest ? ` (weakest: ${score.weakest.id})` : ''}`],
     });
   }
+
+  // the project's own checks must be in the gate: a gate that skips the test suite proves nothing
+  // (a parallel worker's branch may predate them; the main process adopts them on the merged result)
+  if (!process.env.WOLOLO_WORKER) {
+    const missing = uncovered(ctx.root, ctx.config.verify.steps);
+    parts.push({ name: 'coverage', ok: !missing.length, detail: missing.length ? [...missing.map((s) => `the project has ${s.name} (${s.run ?? JSON.stringify(s.app)}) but the gate does not run it`), 'Add them: wololo verify adopt (autopilot adopts them on its own).'] : [] });
+  }
+
+  // a step that changes what people see is not verified until something opens the app and looks
+  if (opts.visual && !allSteps(ctx).some((s) => s.app)) parts.push({ name: 'looked', ok: false, detail: ['This step changes what people see, but no verify step opens the app to look at it. Add one: wololo verify adopt (when the app can be detected), or a step like {"name": "app", "app": {"start": "<run the app>", "url": "<page>"}} ({"window": "<title>"} for a desktop app or game; neither for a CLI).'] });
+
+  // checks may grow with the project; a weaker gate passes nothing until a human accepts it
+  const r = ratchet(ctx, { base: opts.base });
+  parts.push({ name: 'ratchet', ok: r.ok, detail: r.ok ? [] : [...r.weakened, 'Verification only grows. If this weakening is intended, a human accepts it: wololo verify approve (or the TUI: Health → a). Otherwise put the checks back.'] });
 
   const ok = parts.every((p) => p.ok);
   recordEvent(ctx.root, { type: 'gate', ok, failed: parts.filter((p) => !p.ok).map((p) => p.name) });

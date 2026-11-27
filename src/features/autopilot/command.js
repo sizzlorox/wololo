@@ -4,6 +4,10 @@ import { launch } from '../watch/actions.js';
 
 import { readTask } from '../board/store.js';
 import { checkMcpFiles } from '../doctor/mcp.js';
+import { goalText, mcpMentions, missingServers } from '../guard/tools.js';
+import { cpSync, existsSync } from 'node:fs';
+import { templatePath } from '../../core/templates.js';
+import { wololoPath } from '../../core/state.js';
 import { runGate } from '../gate/command.js';
 import { judgedScores } from './climb.js';
 import { agentArgv } from './argv.js';
@@ -90,6 +94,18 @@ export const commands = [
       startStatus(root, { goal, group: input.group, task: task && { id: task.id, title: task.title, started: new Date().toISOString() }, contextWindow: window, agentCli: agent, workers: config.autopilot.workers ?? 1, version: VERSION, stallMinutes: config.autopilot.stallMinutes ?? DEFAULT_STALL_MINUTES });
       log(`watch it live: ${config.bin} watch`);
       for (const problem of checkMcpFiles(ctx.root)) log(`warning: ${problem}`);
+      // no rubric means no judge: nobody ever looks at what was built. Start from the default one.
+      if (!process.env.WOLOLO_WORKER && !existsSync(wololoPath(root, 'rubric.json'))) {
+        cpSync(templatePath('rubric.json'), wololoPath(root, 'rubric.json'));
+        log('no .wololo/rubric.json: added the default one, so a judge scores intent, craft and how it looks');
+      }
+      // the goal's tools before anything is planned: two days of building around a missing image generator is the failure this stops
+      const absent = goal && !process.env.WOLOLO_WORKER ? missingServers(mcpMentions(goalText(root, goal)), root, agent) : [];
+      if (absent.length) {
+        const summary = `the goal needs the ${absent.join(', ')} MCP server${absent.length > 1 ? 's' : ''}, but ${agent} does not have ${absent.length > 1 ? 'them' : 'it'} here (looked in this repo's MCP files and ${agent}'s own settings for this project; a server set up for another CLI or another project does not count). Add ${absent.length > 1 ? 'them' : 'it'} and start again.`;
+        setStatus(root, { state: 'stopped', summary, agent: null });
+        return { ok: false, summary, exitCode: 2 };
+      }
       const r = await (async () => {
         if (input.plan) {
           const planned = await plan(ctx, agent, goal);

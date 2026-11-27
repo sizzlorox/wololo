@@ -20,7 +20,7 @@ export const mcpTools = (config) => config.mcp?.tools ?? (isSmallWindow(config.a
 export const HARNESSES = /** @type {const} */ (['claude', 'codex', 'copilot', 'cursor', 'gemini', 'windsurf', 'opencode', 'amp', 'aider', 'cline', 'omp']);
 
 /**
- * @typedef {{ name: string, run: string, fast?: boolean, timeoutSec?: number }} VerifyStep
+ * @typedef {{ name: string, run?: string, app?: import('../features/verify/app/index.js').AppCheck, fast?: boolean, timeoutSec?: number }} VerifyStep  run (a command) or app (open what was built and look at it)
  * @typedef {{ name: string, run: string, kind?: string, fields?: Record<string, string> }} Source
  *
  * @typedef {object} Config

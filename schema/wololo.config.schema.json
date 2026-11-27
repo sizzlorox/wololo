@@ -24,10 +24,24 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["name", "run"],
+            "required": ["name"],
             "properties": {
               "name": { "type": "string" },
-              "run": { "type": "string" },
+              "run": { "type": "string", "description": "Shell command; exit 0 passes. A step has run or app." },
+              "app": {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "Open what was built and look at it, like a person would; keeps a screenshot (or the terminal text) for the judge and a human. url: opened in a headless browser. window: a desktop app or game, its window captured. Neither: a CLI or terminal app, its output is the screen.",
+                "properties": {
+                  "start": { "type": "string", "description": "Command that runs the app (or serves it, for a url); stopped after" },
+                  "url": { "type": "string", "description": "Open in a browser: an http(s) URL, or a file relative to the repo (index.html)" },
+                  "window": { "type": "string", "description": "A desktop app: title of the window it opens (\"*\" for any window it opens)" },
+                  "expect": { "type": "string", "description": "url: CSS selector that must be on screen and not blank (default body), e.g. canvas. Terminal: text the output must contain" },
+                  "waitMs": { "type": "number", "description": "How long to let it run before looking (default 3000; window 5000)" },
+                  "readyMs": { "type": "number", "description": "How long the app may take to answer or open its window (default 90000 for a url, 30000 for a window)" },
+                  "allow": { "type": "array", "items": { "type": "string" }, "description": "Substrings of errors to ignore (a known third-party warning)" }
+                }
+              },
               "fast": { "type": "boolean", "description": "Cheap enough to run on every agent stop." },
               "timeoutSec": { "type": "number" }
             }

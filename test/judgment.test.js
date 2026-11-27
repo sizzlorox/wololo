@@ -15,7 +15,7 @@ const prompt = process.argv[2];
 fs.appendFileSync(process.env.PROMPT_LOG, JSON.stringify(prompt) + '\n');
 if (prompt.includes('You are the judge')) {
   const path = /Write (\S+) as JSON/.exec(prompt)[1];
-  fs.writeFileSync(path, JSON.stringify({ scores: { intent: 1, craft: 1 }, notes: {} }));
+  fs.writeFileSync(path, JSON.stringify({ scores: { intent: 1, craft: 1, looks: 1 }, notes: {} }));
 } else if (prompt.includes('You are the builder')) {
   fs.writeFileSync('feature.js', 'export const greet = (n) => n;\n');
   execSync('git add -A && git commit -qm "feat: greet"');
@@ -49,7 +49,7 @@ test('judge scores count only for the exact state they were given for', () => {
   requireJudgment();
   assert.equal(wololo(['autopilot', '--goal', 'Add a greet helper']).code, 0);
   assert.ok(existsSync(statePath(repo, 'judge.json')));
-  assert.deepEqual(judgedScores(repo), { intent: 1, craft: 1 }, 'for the state that was judged');
+  assert.deepEqual(judgedScores(repo), { intent: 1, craft: 1, looks: 1 }, 'for the state that was judged');
   writeFileSync(join(repo, 'feature.js'), 'export const greet = (n) => `hi ${n}`;\n');
   assert.deepEqual(judgedScores(repo), {}, 'an uncommitted change since: stale');
   git(['commit', '-qam', 'change']);
@@ -103,7 +103,7 @@ if (prompt.includes('You are the planner')) {
   fs.writeFileSync(path, JSON.stringify({ tasks: [{ title: 'Add alpha', body: 'a', deps: [], touches: ['alpha.js'] }, { title: 'Add beta', body: 'b', deps: [], touches: ['beta.js'] }] }));
 } else if (prompt.includes('You are the judge')) {
   const path = /Write (\S+) as JSON/.exec(prompt)[1];
-  fs.writeFileSync(path, JSON.stringify({ scores: { intent: 1, craft: 1 }, notes: {} }));
+  fs.writeFileSync(path, JSON.stringify({ scores: { intent: 1, craft: 1, looks: 1 }, notes: {} }));
 } else if (prompt.includes('You are the builder')) {
   const n = /Add (\w+)/.exec(prompt.split('Implement this feature:')[1])[1];
   fs.writeFileSync(n + '.js', '1\n');

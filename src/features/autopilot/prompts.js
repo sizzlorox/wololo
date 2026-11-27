@@ -122,6 +122,7 @@ export function plannerPrompt(bin, goal, planPath, opts) {
     '- leave the repo working: the gate passes after every step;',
     '- be verifiable on its own: say exactly how done will be checked (which test or command);',
     '- be ordered so that every step only depends on earlier ones.',
+    '- if it needs an MCP server or outside tool the goal names (an image generator, a database), list it in "tools": ["name"]; wololo checks it is there before the step starts and that the step really used it.',
     ...(opts.parallel && opts.parallel > 1
       ? [
           `Up to ${opts.parallel} steps are built at the same time, each by its own agent on its own branch, then merged. So for every step also give:`,
@@ -132,7 +133,7 @@ export function plannerPrompt(bin, goal, planPath, opts) {
       : []),
     `Use at most ${opts.maxTasks} steps. Prefer fewer when the goal is small.`,
     '',
-    `Write the plan to ${planPath} as JSON: {"tasks": [{"title": "imperative, under 80 chars", "body": "what to build, constraints, and how done is verified"${opts.parallel && opts.parallel > 1 ? ', "deps": [1], "touches": ["src/area/"]' : ''}}]}`,
+    `Write the plan to ${planPath} as JSON: {"tasks": [{"title": "imperative, under 80 chars", "body": "what to build, constraints, and how done is verified", "tools": []${opts.parallel && opts.parallel > 1 ? ', "deps": [1], "touches": ["src/area/"]' : ''}}]}`,
     `Do not create board tasks yourself and do not commit; wololo (${bin}) reads the file.`,
   ].join('\n');
 }

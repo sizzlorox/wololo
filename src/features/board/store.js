@@ -21,6 +21,7 @@ import { statePath } from '../../core/state.js';
  * @property {string[]} [splitInto]  Set when autopilot replaced this step with smaller ones (it is then done).
  * @property {string[]} [deps]     Task ids this step needs landed first (parallel autopilot).
  * @property {string[]} [touches]  Paths or dirs this step will change; steps that overlap never run at once.
+ * @property {string[]} [tools]    MCP servers this step must use (checked before it starts, and in its transcripts before it lands).
  * @property {string} created
  * @property {string} updated
  */
