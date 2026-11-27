@@ -5,6 +5,7 @@ import { statePath } from '../../core/state.js';
 import { commands as boardCommands } from '../board/command.js';
 import { readTask, writeTask } from '../board/store.js';
 import { goalBlocker } from '../guard/tools.js';
+import { loadConfig } from '../../core/config.js';
 
 const board = Object.fromEntries(boardCommands.map((c) => [c.name, c]));
 
@@ -91,7 +92,7 @@ export async function act(key, v, ctx, text) {
   if (key === 'n') {
     if (!text?.trim()) return '';
     // check here, before launching: a run that stops at once in the background looked like nothing happened
-    const blocked = goalBlocker(ctx.root, text.trim(), ctx.config.autopilot.agent);
+    const blocked = goalBlocker(ctx.root, text.trim(), (ctx.config ?? loadConfig(ctx.root)).autopilot.agent);
     if (blocked) return blocked;
     run(['autopilot', '--goal', text.trim(), '--plan']);
     return `started: ${text.trim()}`;
