@@ -138,6 +138,8 @@ test('width counts screen columns: tabs, CJK and emoji are wider than one; fitti
   assert.equal(width('ok 🎉'), 5, 'emoji take two');
   assert.equal(width('a\tb'), 4, 'a tab is shown as two spaces');
   assert.equal(width('é'), 1, 'combining marks take none');
+  assert.equal(width('⚠️!'), 3, 'a text symbol made emoji by VS16 takes two');
+  assert.equal(width('⚠!'), 2, 'without it, one');
   for (const s of ['日本語のテキストがとても長い場合', '🎉🎉🎉🎉🎉🎉🎉🎉', 'tabs\tand\tmore\ttabs', 'plain ascii that is long enough']) {
     for (const w of [5, 8, 13]) assert.ok(width(fitTo(s, w)) <= w, `${JSON.stringify(s)} at ${w}: ${width(fitTo(s, w))}`);
   }
@@ -188,5 +190,23 @@ test('a burst of keys (a held arrow) draws once when it is through, not once per
   } finally {
     stdin.write('q');
     await done;
+  }
+});
+
+test('wrap splits coloured text between characters, never inside an escape, and each line closes its colour', () => {
+  const c = painter(true);
+  const line = c('35', `── ← THINKING ${'─'.repeat(30)}`) + c('2', ' 11:48:49');
+  for (const w of [10, 20, 33, 50]) {
+    const out = wrap(line, w);
+    for (const l of out) {
+      const plain = l.replace(/\x1b\[[0-9;]*m/g, '');
+      assert.ok(!plain.includes('\x1b'), `a broken escape at width ${w}: ${JSON.stringify(l)}`);
+      assert.ok(width(l) <= w);
+      const codes = l.match(/\x1b\[[0-9;]*m/g) ?? [];
+      assert.ok(!codes.length || codes.at(-1) === '\x1b[0m', `colour left open at width ${w}: ${JSON.stringify(l)}`);
+    }
+    const text = (/** @type {string} */ s) => s.replace(/\x1b\[[0-9;]*m/g, '').replace(/\s/g, '');
+    assert.equal(out.map(text).join(''), text(line), 'no text lost');
+    assert.ok(out.slice(1).every((l) => l.startsWith('\x1b[')), 'a continued colour carries over');
   }
 });

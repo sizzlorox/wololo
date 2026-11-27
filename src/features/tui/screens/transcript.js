@@ -30,21 +30,58 @@ function load(root, id) {
 
 /** @typedef {import('../../autopilot/transcript.js').Entry} Entry @typedef {import('../../watch/widgets.js').Paint} Paint */
 
-/** @param {Paint} c @param {string} color @param {string} text */
-const label = (c, color, text) => c(color, `── ${text} ${'─'.repeat(Math.max(0, 40 - text.length))}`);
+/** A bold coloured kind, then dim details. @param {Paint} c @param {string} color @param {string} kind @param {string} [rest] */
+const label = (c, color, kind, rest = '') => `${c(`1;${color}`, kind)}${rest ? ` ${rest}` : ''}`;
+
+/** Indent a body two columns (colour inside the indent, so wrapping keeps it). @param {string[]} ls @param {Paint} [c] @param {string} [code] */
+const body = (ls, c, code) => ls.map((l) => (l ? `  ${c && code ? c(code, l) : l}` : ''));
+
+/** At most RESULT_LINES lines unless full results are on. @param {string[]} ls @param {Record<string, any>} ui @param {Paint} c */
+function capped(ls, ui, c) {
+  return !ui.fullResults && ls.length > RESULT_LINES ? [...ls.slice(0, RESULT_LINES), c('2', `… ${ls.length - RESULT_LINES} more lines (o)`)] : ls;
+}
+
+/**
+ * A tool call as what the agent did: single-line arguments beside the tool, a shell command as
+ * `$ …` on its own lines, other multi-line text (file contents, edits) as an indented block.
+ * @param {Entry} e @param {string} at @param {Record<string, any>} ui @param {Paint} c
+ */
+function callLines(e, at, ui, c) {
+  const name = `← ${e.tool ?? 'tool'}`;
+  let args;
+  try {
+    args = JSON.parse(e.text);
+  } catch {
+    // not JSON: shown as is
+  }
+  if (!args || typeof args !== 'object' || Array.isArray(args)) return [label(c, '33', name, at), ...body(capped(e.text.split('\n'), ui, c)), ''];
+  /** @type {string[]} */
+  const inline = [];
+  /** @type {string[]} */
+  const blocks = [];
+  for (const [k, v] of Object.entries(args)) {
+    if (k === 'command' && typeof v === 'string') {
+      const [first, ...more] = v.split('\n');
+      blocks.unshift(...body([`$ ${first}`, ...capped(more, ui, c).map((l) => `  ${l}`)]));
+    } else if (typeof v === 'string' && v.includes('\n')) blocks.push(...body([c('2', k), ...capped(v.split('\n'), ui, c).map((l) => `  ${l}`)]));
+    else inline.push(`${c('2', k)} ${typeof v === 'string' ? v : JSON.stringify(v)}`);
+  }
+  return [label(c, '33', name, [at, ...inline].filter(Boolean).join('  ')), ...blocks, ''];
+}
 
 /** What one entry shows, before wrapping. @param {Entry} e @param {Record<string, any>} ui @param {Paint} c @returns {string[]} */
-function entryLines(e, ui, c) {
-  const at = e.at ? c('2', ` ${new Date(e.at).toLocaleTimeString()}`) : '';
-  if (e.kind === 'prompt') return [label(c, '36', '→ PROMPT  wololo → model') + at, e.text, ''];
-  if (e.kind === 'sent') return [label(c, '36', '→ SENT  harness → model') + at, e.text, ''];
-  if (e.kind === 'thinking') return ui.hideThinking ? [] : [label(c, '35', '← THINKING') + at, c('2', e.text), ''];
-  if (e.kind === 'reply') return [label(c, '32', '← REPLY') + at, e.text, ''];
-  if (e.kind === 'call') return [label(c, '33', `← TOOL CALL  ${e.tool}`) + at, e.text, ''];
+export function entryLines(e, ui, c) {
+  // toTimeString: plain hh:mm:ss (toLocaleTimeString adds a narrow no-break space and AM/PM)
+  const at = e.at ? c('2', new Date(e.at).toTimeString().slice(0, 8)) : '';
+  if ((e.kind === 'reply' || e.kind === 'thinking') && !e.text.trim()) return []; // nothing said: no bare label
+  if (e.kind === 'prompt') return [label(c, '36', '→ PROMPT', at), ...body(e.text.split('\n')), ''];
+  if (e.kind === 'sent') return [label(c, '36', '→ SENT by the harness', at), ...body(e.text.split('\n')), ''];
+  if (e.kind === 'thinking') return ui.hideThinking ? [] : [label(c, '35', '← THINKING', at), ...body(e.text.split('\n'), c, '2'), ''];
+  if (e.kind === 'reply') return [label(c, '32', '← REPLY', at), ...body(e.text.split('\n')), ''];
+  if (e.kind === 'call') return callLines(e, at, ui, c);
   if (e.kind === 'result') {
-    const body = e.text.split('\n');
-    const cut = !ui.fullResults && body.length > RESULT_LINES;
-    return [label(c, e.error ? '31' : '36', `→ TOOL RESULT  ${e.tool ?? ''} ${num(e.text.length)} chars, sent to the model${e.error ? ' (error)' : ''}`) + at, ...(cut ? [...body.slice(0, RESULT_LINES), c('2', `… ${body.length - RESULT_LINES} more lines (o)`)] : body), ''];
+    const kind = `→ ${e.error ? 'ERROR' : 'RESULT'}${e.tool ? ` ${e.tool}` : ''}`;
+    return [label(c, e.error ? '31' : '36', kind, [at, c('2', `${num(e.text.length)} chars`)].filter(Boolean).join('  ')), ...body(capped(e.text.split('\n'), ui, c)), ''];
   }
   return []; // endpoint: shown in the header
 }
@@ -130,9 +167,11 @@ export const transcriptScreen = {
       `outbound  ${num(sentChars)} chars ≈ ${num(sentChars / 4)} tokens (prompt + ${results} tool results)`,
       ...(found.length ? [c('31', `⚠ ${found.length} possible secret(s) sent: ${found.map((/** @type {any} */ f) => `${f.kind} ${f.preview}`).join(', ')}`)] : [c('32', '✓ no secrets found in outbound')]),
       c('2', 'not shown: the agent CLI\'s system prompt and tool definitions'),
+      c('2', '→ sent to the model   ← from the model'),
       '',
     ];
-    const tail = live && d.agent?.live && !(ui.hideThinking && d.agent.liveOf === 'thinking') ? [label(c, d.agent.liveOf === 'reply' ? '32' : '35', `← ${d.agent.liveOf === 'reply' ? 'REPLY' : 'THINKING'}  streaming…`), d.agent.liveOf === 'reply' ? d.agent.live : c('2', d.agent.live)] : [];
+    const streaming = d.agent?.liveOf === 'reply';
+    const tail = live && d.agent?.live && !(ui.hideThinking && !streaming) ? [label(c, streaming ? '32' : '35', streaming ? '← REPLY' : '← THINKING', c('2', 'streaming…')), ...body(d.agent.live.split('\n'), c, streaming ? '' : '2')] : [];
     const flags = `${ui.hideThinking ? 1 : 0}${ui.fullResults ? 1 : 0}`;
     const eager = (/** @type {string[]} */ ls, /** @type {number} */ pw) => {
       const out = ls.flatMap((l) => wrapped(l, pw));

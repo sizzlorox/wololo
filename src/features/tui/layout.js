@@ -1,4 +1,4 @@
-import { box, clean, columns, cut, fit, pad, width } from '../watch/widgets.js';
+import { box, clean, columns, fit, pad, width } from '../watch/widgets.js';
 
 /**
  * Shared TUI layout: a selectable list beside a detail pane, and wrapped text for details.
@@ -20,8 +20,44 @@ export function windowOf(n, at, room) {
   return { from, to: from + room };
 }
 
+const SGR = /\x1b\[[0-9;]*m/y;
+
 /**
- * Word-wrap text to a width, keeping blank lines and indentation.
+ * The longest start of `s` that fits in w columns, colour escapes kept whole and counted as zero;
+ * at least one character, so wrapping always moves on.
+ * @param {string} s @param {number} w
+ */
+function cutRaw(s, w) {
+  let n = 0;
+  let i = 0;
+  let chars = 0;
+  while (i < s.length) {
+    SGR.lastIndex = i;
+    const esc = SGR.exec(s);
+    if (esc) {
+      i += esc[0].length;
+      continue;
+    }
+    const ch = String.fromCodePoint(/** @type {number} */ (s.codePointAt(i)));
+    const k = width(ch);
+    if (chars && n + k > w) break;
+    n += k;
+    chars++;
+    i += ch.length;
+  }
+  return s.slice(0, i);
+}
+
+/** The colour escapes still in effect at the end of `s` (since its last reset). @param {string} s */
+function openColours(s) {
+  const codes = s.match(/\x1b\[[0-9;]*m/g) ?? [];
+  const reset = codes.findLastIndex((x) => x === '\x1b[0m' || x === '\x1b[m');
+  return codes.slice(reset + 1).join('');
+}
+
+/**
+ * Word-wrap text to a width, keeping blank lines and indentation. Colour escapes count as zero
+ * columns and are never split; splitting one left a stray ESC that ate the panel's right border.
  * @param {string} text @param {number} w
  */
 export function wrap(text, w) {
@@ -38,12 +74,14 @@ export function wrap(text, w) {
       continue;
     }
     while (width(indent + rest) > w) {
-      const room = w - indent.length;
-      const fits = cut(rest, room);
+      const fits = cutRaw(rest, w - indent.length);
       const space = fits.lastIndexOf(' ');
-      const at = space > fits.length / 3 ? space : fits.length || 1;
-      out.push(indent + rest.slice(0, at));
-      rest = rest.slice(at).trimStart();
+      const at = space > fits.length / 3 ? space : fits.length;
+      const head = rest.slice(0, at);
+      // colour still open at the break: close it here, reopen it on the next line
+      const open = openColours(head);
+      out.push(indent + head + (open ? '\x1b[0m' : ''));
+      rest = open + rest.slice(at).trimStart();
     }
     out.push(indent + rest);
   }

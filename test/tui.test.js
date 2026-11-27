@@ -173,14 +173,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     run.kill(); // a failed assertion must not leave the run or the TUI holding the test open
     t.type('q');
   });
-  await t.until(/THINKING {2}streaming…[\s\S]*Let me read/, 20000);
+  await t.until(/THINKING streaming…[\s\S]*Let me read/, 20000);
   assert.match(t.screen(), /● live/);
-  assert.match(t.screen(), /→ PROMPT {2}wololo → model[\s\S]*You are the builder/);
+  assert.match(t.screen(), /→ PROMPT[\s\S]*You are the builder/);
   assert.match(t.screen(), /sent to +dads-gpu · openai-completions · big-model/);
 
   await t.until(/← REPLY[\s\S]*All done here\./, 20000);
-  assert.match(t.screen(), /← TOOL CALL {2}read[\s\S]*"\.env"/);
-  assert.match(t.screen(), /→ TOOL RESULT {2}read .*sent to the model/);
+  assert.match(t.screen(), /← read .*\.env/, 'arguments beside the tool, not raw JSON');
+  assert.match(t.screen(), /→ RESULT read .*chars/);
   assert.match(t.screen(), /⚠ 1 possible secret\(s\) sent: bearer token abcdefg…/);
   await new Promise((r) => run.on('close', r));
 

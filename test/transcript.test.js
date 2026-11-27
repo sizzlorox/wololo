@@ -155,3 +155,18 @@ test('the transcript pane is virtual: scrolling a long run reads only the entrie
   ui.follow = true;
   assert.match(show(), /reply 2999\b/, 'follow shows the end');
 });
+
+test('tool calls read like what the agent did: the command on its own lines, short arguments beside the tool', async () => {
+  const { entryLines } = await import('../src/features/tui/screens/transcript.js');
+  const { painter } = await import('../src/features/watch/widgets.js');
+  const c = painter(false);
+  const call = (/** @type {string} */ tool, /** @type {any} */ args) => entryLines({ kind: 'call', tool, text: typeof args === 'string' ? args : JSON.stringify(args) }, {}, c);
+  const bash = call('bash', { command: "cat > x.mts <<'EOF'\nimport { S } from './s.js';\nEOF", cwd: 'D:/w', timeout: 60 });
+  assert.match(bash[0], /← bash .*cwd D:\/w .*timeout 60/);
+  assert.deepEqual(bash.slice(1, 4), ["  $ cat > x.mts <<'EOF'", "    import { S } from './s.js';", '    EOF'], 'real lines, not \n');
+  assert.match(call('read', { path: 'src/a.ts', offset: 10 })[0], /← read .*path src\/a\.ts .*offset 10/);
+  const write = call('write', { path: 'a.txt', content: Array.from({ length: 30 }, (_, i) => `line ${i}`).join('\n') });
+  assert.ok(write.includes('  content'), 'a long text argument gets its own block');
+  assert.ok(write.some((l) => /more lines \(o\)/.test(l)), 'cut like a tool result');
+  assert.deepEqual(call('odd', 'not json').slice(1, 2), ['  not json'], 'unparsable arguments are shown as they are');
+});

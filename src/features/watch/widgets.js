@@ -11,7 +11,8 @@ const ANSI = /\x1b\[[0-9;?]*[a-zA-Z]/g;
 function cols(ch) {
   const c = /** @type {number} */ (ch.codePointAt(0));
   if (c < 0x300) return 1; // ASCII and Latin, nearly all text: skip the Unicode regex below
-  if (c === 0x200d || c === 0xfe0f || (c >= 0x300 && c <= 0x36f) || (c >= 0x20d0 && c <= 0x20ff)) return 0;
+  if (c === 0xfe0f) return 1; // emoji presentation: the narrow symbol before it is drawn two wide
+  if (c === 0x200d || (c >= 0x300 && c <= 0x36f) || (c >= 0x20d0 && c <= 0x20ff)) return 0;
   if (/\p{Extended_Pictographic}/u.test(ch) && c > 0x2bff) return 2;
   if ((c >= 0x1100 && c <= 0x115f) || (c >= 0x2e80 && c <= 0xa4cf) || (c >= 0xac00 && c <= 0xd7a3) || (c >= 0xf900 && c <= 0xfaff) || (c >= 0xfe30 && c <= 0xfe4f) || (c >= 0xff00 && c <= 0xff60) || (c >= 0xffe0 && c <= 0xffe6) || (c >= 0x20000 && c <= 0x3fffd)) return 2;
   return 1;
