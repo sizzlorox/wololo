@@ -3,26 +3,27 @@ import { join } from 'node:path';
 import { statePath } from '../../../core/state.js';
 import { age } from '../../../core/text.js';
 import { readStatus } from '../../autopilot/status.js';
-import { importLastRun, listRuns, readRun, secrets } from '../../autopilot/transcript.js';
+import { importLastRun, listRuns, readRunFrom, secrets } from '../../autopilot/transcript.js';
 import { listDetail, moveIn, num } from '../layout.js';
 
 /** What goes to the model: the prompt, other messages the harness sends, and tool results. */
 const OUTBOUND = new Set(['prompt', 'sent', 'result']);
 const RESULT_LINES = 12;
 
-/** Parsed runs, reparsed only when the file grew. @type {Map<string, { size: number, entries: import('../../autopilot/transcript.js').Entry[], found: { kind: string, preview: string }[] }>} */
+/** Parsed runs; a live run's new lines are parsed and scanned as they land. @type {Map<string, { end: number, entries: import('../../autopilot/transcript.js').Entry[], found: { kind: string, preview: string }[] }>} */
 const cache = new Map();
 
 /** @param {string} root @param {string} id */
 function load(root, id) {
   const file = join(statePath(root, 'runs'), `${id}.jsonl`);
   const size = existsSync(file) ? statSync(file).size : 0;
-  const hit = cache.get(id);
-  if (hit && hit.size === size) return hit;
-  const entries = readRun(root, id);
-  // ponytail: rescans the whole run when it grows; scan only the new entries if live runs get slow
-  const found = entries.filter((e) => OUTBOUND.has(e.kind)).flatMap((e) => secrets(e.text));
-  const run = { size, entries, found };
+  let run = cache.get(id);
+  if (run && run.end === size) return run;
+  if (!run || size < run.end) run = { end: 0, entries: [], found: [] }; // new, or rewritten shorter: from the top
+  const more = readRunFrom(root, id, run.end);
+  if (more.end === run.end) return run; // only a line still being written
+  // a new object, so a render memoized on it sees the change
+  run = { end: more.end, entries: [...run.entries, ...more.entries], found: [...run.found, ...more.entries.filter((e) => OUTBOUND.has(e.kind)).flatMap((e) => secrets(e.text))] };
   cache.set(id, run);
   return run;
 }

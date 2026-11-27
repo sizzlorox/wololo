@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { appendFileSync, closeSync, existsSync, fstatSync, openSync, readdirSync, readFileSync, readSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { ensureDir } from '../../core/files.js';
 import { statePath } from '../../core/state.js';
@@ -128,6 +128,57 @@ export function readRun(root, id) {
     .filter((e) => e.kind !== 'note');
 }
 
+/**
+ * A run's finished lines from byte `from` on, for following a live run without rereading it.
+ * A line still being written stays unread until its newline lands: `end` stops before it.
+ * @param {string} root @param {string} id @param {number} from
+ * @returns {{ entries: Entry[], end: number }}
+ */
+export function readRunFrom(root, id, from) {
+  const file = join(dir(root), `${id}.jsonl`);
+  if (!existsSync(file)) return { entries: [], end: 0 };
+  const fd = openSync(file, 'r');
+  let buf;
+  try {
+    const size = fstatSync(fd).size;
+    buf = Buffer.alloc(Math.max(0, size - from));
+    let n = 0;
+    while (n < buf.length) {
+      const got = readSync(fd, buf, n, buf.length - n, from + n);
+      if (!got) break;
+      n += got;
+    }
+    buf = buf.subarray(0, n);
+  } finally {
+    closeSync(fd);
+  }
+  const last = buf.lastIndexOf(10); // whole lines only: never split a multi-byte character or a line
+  const entries = buf
+    .toString('utf8', 0, last + 1)
+    .split('\n')
+    .filter(Boolean)
+    .flatMap((l) => {
+      try {
+        return [JSON.parse(l)];
+      } catch {
+        return [];
+      }
+    })
+    .filter((e) => e.kind !== 'note');
+  return { entries, end: from + last + 1 };
+}
+
+/** The first 16 KiB of a file: enough for a run's first line (its role note) without reading megabytes. @param {string} file */
+function head(file) {
+  const fd = openSync(file, 'r');
+  try {
+    const buf = Buffer.alloc(16384);
+    return buf.toString('utf8', 0, readSync(fd, buf, 0, buf.length, 0));
+  } finally {
+    closeSync(fd);
+  }
+}
+
 /** Runs, newest first. @param {string} root @returns {{ id: string, role: string, at: string }[]} */
 export function listRuns(root) {
   if (!existsSync(dir(root))) return [];
@@ -137,7 +188,7 @@ export function listRuns(root) {
     .reverse()
     .map((f) => {
       const id = f.slice(0, -6);
-      const first = readFileSync(join(dir(root), f), 'utf8').split('\n', 1)[0];
+      const first = head(join(dir(root), f)).split('\n', 1)[0];
       try {
         const note = JSON.parse(first);
         return { id, role: note.text, at: note.at };

@@ -159,3 +159,34 @@ test('step details wrap the description and notes instead of cutting them, scrol
   const scrolled = details(t, w, 12, 20).split('\n');
   assert.notDeepEqual(scrolled, top, 'pgdn scrolls');
 });
+
+test('a burst of keys (a held arrow) draws once when it is through, not once per key', async () => {
+  const { PassThrough } = await import('node:stream');
+  const { runApp } = await import('../src/features/tui/app.js');
+  const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {} });
+  let frames = 0;
+  let last = '';
+  const stdout = { columns: 80, rows: 20, write: (/** @type {string} */ s) => (s.includes('\x1b[?2026h') ? ((frames++), (last = s)) : 0) };
+  /** @type {import('../src/features/tui/app.js').Screen} */
+  const screen = {
+    id: 's',
+    title: 'S',
+    load: (_ctx, ui) => (ui.at ??= 0),
+    keys: () => [],
+    render: (at) => [`at ${at}`],
+    handle: (key, _d, ui) => void (key === 'down' && ui.at++),
+  };
+  const done = runApp(/** @type {any} */ ({ root: '.' }), { screens: [screen], io: /** @type {any} */ ({ stdin, stdout }), interval: 60 });
+  await new Promise((r) => setTimeout(r, 20));
+  try {
+    frames = 0;
+    stdin.write('\x1b[B'.repeat(30));
+    await new Promise((r) => setTimeout(r, 100));
+    assert.match(last, /at 30/);
+    assert.ok(frames <= 2, `${frames} frames for one burst`);
+    assert.doesNotMatch(last, /working/, 'a key handled at once never flashes a busy line');
+  } finally {
+    stdin.write('q');
+    await done;
+  }
+});

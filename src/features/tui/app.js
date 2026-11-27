@@ -91,8 +91,20 @@ export async function runApp(ctx, opts) {
    */
   const settle = (p) => Promise.race([p, new Promise((r) => setTimeout(r, 150))]);
 
-  /** @param {Promise<any> | any} p @param {string} what */
-  const track = async (p, what) => {
+  /** @param {() => Promise<any> | any} run @param {string} what */
+  const track = async (run, what) => {
+    let p;
+    try {
+      p = run();
+    } catch (e) {
+      message = `error: ${/** @type {Error} */ (e).message}`;
+      return;
+    }
+    // handled at once (navigation): no busy line, so no flicker and no extra frames
+    if (!(p instanceof Promise)) {
+      if (typeof p === 'string' && p) message = p;
+      return;
+    }
     busy = what;
     draw();
     try {
@@ -198,7 +210,8 @@ export async function runApp(ctx, opts) {
       if (r.cancel) asking = null;
       else if (r.submit) {
         asking = null;
-        await settle(track(a.onSubmit(r.submit), 'working'));
+        const values = r.submit;
+        await settle(track(() => a.onSubmit(values), 'working'));
       } else asking = { ...a, form: r.form };
       return false;
     }
@@ -206,7 +219,7 @@ export async function runApp(ctx, opts) {
       const conf = confirming;
       if (key === 'y') {
         confirming = null;
-        await settle(track(conf.onYes(), 'working'));
+        await settle(track(() => conf.onYes(), 'working'));
       } else if (key === 'n' || key === 'esc') confirming = null;
       return false;
     }
@@ -233,7 +246,7 @@ export async function runApp(ctx, opts) {
         return false;
       }
       message = '';
-      await settle(track(screen.handle(key, data, ui, app), 'working'));
+      await settle(track(() => screen.handle(key, data, ui, app), 'working'));
     }
     return false;
   };
@@ -262,14 +275,18 @@ export async function runApp(ctx, opts) {
     stdin.setRawMode?.(true);
     stdin.resume();
     // Keys apply one at a time, in order, even when a handler awaits a child process.
+    // A burst (a held arrow, a paste) draws once, after its last key.
     let queue = Promise.resolve(false);
+    let pending = 0;
     stdin.on('data', (b) => {
       for (const key of decode(b.toString())) {
+        pending++;
         queue = queue.then(async (stop) => {
+          pending--;
           if (stop) return true;
           const end = await onKey(key);
           if (end) quit();
-          else draw();
+          else if (!pending) draw();
           return end;
         });
       }

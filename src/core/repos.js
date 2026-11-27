@@ -2,7 +2,7 @@
 // Autopilot asks git questions through here, so both look the same to it. Paths and commit subjects
 // from a workspace are prefixed with their repo ("frontend/src/login.tsx", "backend: feat: auth").
 import { existsSync, readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { git, gitOut } from './git.js';
 import { shortHash } from './text.js';
 
@@ -15,9 +15,13 @@ const SKIP = new Set(['node_modules', '.git', '.wololo', 'dist', 'build', 'targe
  * @param {string} root
  */
 export function listRepos(root) {
-  if (git(root, ['rev-parse', '--show-toplevel']).status === 0) return ['.'];
+  // a .git (folder, or a worktree's file) here or above answers without starting git; the TUI asks every frame
+  for (let d = resolve(root); ; d = dirname(d)) {
+    if (existsSync(join(d, '.git'))) return ['.'];
+    if (dirname(d) === d) break;
+  }
   if (!existsSync(root)) return [];
-  return readdirSync(root)
+  const children = readdirSync(root)
     .filter((d) => !SKIP.has(d) && !d.startsWith('.'))
     .filter((d) => {
       try {
@@ -27,6 +31,8 @@ export function listRepos(root) {
       }
     })
     .sort();
+  // neither: git may still know better (GIT_DIR set, a .git it reaches some other way)
+  return children.length || git(root, ['rev-parse', '--show-toplevel']).status !== 0 ? children : ['.'];
 }
 
 /** @param {string} root */

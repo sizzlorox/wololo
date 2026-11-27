@@ -50,6 +50,25 @@ export function wrap(text, w) {
   return out;
 }
 
+/** Wrapped lines by width, then text: a detail pane shows the same long transcript every frame. @type {Map<number, Map<string, string[]>>} */
+const memo = new Map();
+
+/** @param {string} line @param {number} w */
+function wrapped(line, w) {
+  let byText = memo.get(w);
+  if (!byText) {
+    memo.clear(); // a resize: the old width's lines are not coming back
+    memo.set(w, (byText = new Map()));
+  }
+  let out = byText.get(line);
+  if (!out) {
+    // ponytail: drop everything past a bound instead of tracking recency; fine for one screen of history
+    if (byText.size > 20000) byText.clear();
+    byText.set(line, (out = wrap(line, w)));
+  }
+  return out;
+}
+
 /**
  * A list on the left, the selected item's details on the right; stacked when narrow.
  * @param {{ title: string, rows: string[], at: number, detailTitle: string, detail: string[], scroll?: number, clamped?: (scroll: number) => void }} p
@@ -68,7 +87,7 @@ export function listDetail(p, w, h, c) {
   if (!p.rows.length) rows.push(c('2', '(empty)'));
   const counter = p.rows.length ? ` ${p.at + 1}/${p.rows.length}` : '';
   const list = box(`${p.title}${counter}`, rows, listW, c, listH);
-  const body = p.detail.flatMap((l) => wrap(l, detailW - 4));
+  const body = p.detail.flatMap((l) => wrapped(l, detailW - 4));
   const scroll = Math.max(0, Math.min(p.scroll ?? 0, body.length - (detailH - 2)));
   p.clamped?.(scroll);
   const shown = body.slice(scroll, scroll + detailH - 2);

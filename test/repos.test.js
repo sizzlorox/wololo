@@ -57,3 +57,27 @@ test('a single repo keeps plain shas and plain paths', () => {
   assert.deepEqual(commitsSince(root, base), ['feat: a']);
   assert.equal(diffHint(base), `\`git diff ${base}\``);
 });
+
+test('listRepos finds a repo on disk without starting git: the TUI asks every frame', async () => {
+  const cp = await import('node:child_process');
+  const { syncBuiltinESMExports } = await import('node:module');
+  const root = workspace();
+  const sub = join(root, 'frontend', 'src', 'deep');
+  mkdirSync(sub, { recursive: true });
+  // a worktree's .git is a file pointing at the main repo's git dir
+  const tree = join(root, 'tree');
+  spawnSync('git', ['worktree', 'add', '-q', '--detach', tree], { cwd: join(root, 'frontend') });
+  const orig = cp.default.spawnSync;
+  let spawned = 0;
+  cp.default.spawnSync = /** @type {any} */ ((/** @type {any[]} */ ...a) => (spawned++, orig(.../** @type {[any]} */ (a))));
+  syncBuiltinESMExports();
+  try {
+    assert.deepEqual(listRepos(join(root, 'frontend')), ['.']);
+    assert.deepEqual(listRepos(sub), ['.'], 'inside a repo, below its top');
+    assert.deepEqual(listRepos(tree), ['.'], 'a worktree');
+    assert.equal(spawned, 0);
+  } finally {
+    cp.default.spawnSync = orig;
+    syncBuiltinESMExports();
+  }
+});

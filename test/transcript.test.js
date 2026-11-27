@@ -65,3 +65,68 @@ test('the last run before transcripts existed is imported from agent-stream.log,
   assert.deepEqual(readRun(root, run.id).map((e) => e.kind), ['prompt', 'reply']);
   assert.equal(importLastRun(root), false, 'only once');
 });
+
+test('listRuns reads only the head of each run file: the TUI lists them every frame, and live runs grow to megabytes', async () => {
+  const fs = await import('node:fs');
+  const { syncBuiltinESMExports } = await import('node:module');
+  const root = mkdtempSync(join(tmpdir(), 'wololo-transcript-'));
+  const rec = recorder(root, 'builder', 'You are the builder');
+  for (let i = 0; i < 50; i++) rec.add({ kind: 'result', tool: 'bash', text: 'x'.repeat(20000) });
+  const orig = fs.default.readFileSync;
+  let read = 0;
+  fs.default.readFileSync = /** @type {any} */ ((/** @type {any[]} */ ...a) => {
+    const out = orig(.../** @type {[any]} */ (a));
+    read += out.length;
+    return out;
+  });
+  syncBuiltinESMExports();
+  try {
+    assert.deepEqual(listRuns(root).map((r) => r.role), ['builder']);
+  } finally {
+    fs.default.readFileSync = orig;
+    syncBuiltinESMExports();
+  }
+  assert.ok(read < 100_000, `read ${read} bytes to list one run`);
+});
+
+test('a live run is parsed as it grows: only the new bytes are read, and a half-written line counts once it is finished', async () => {
+  const fs = await import('node:fs');
+  const { syncBuiltinESMExports } = await import('node:module');
+  const { transcriptScreen } = await import('../src/features/tui/screens/transcript.js');
+  const root = mkdtempSync(join(tmpdir(), 'wololo-transcript-'));
+  const rec = recorder(root, 'builder', 'You are the builder');
+  for (let i = 0; i < 50; i++) rec.add({ kind: 'result', tool: 'bash', text: 'x'.repeat(20000) });
+  const ctx = /** @type {any} */ ({ root });
+  const ui = {};
+  const kinds = () => transcriptScreen.load(ctx, ui).data.entries.map((/** @type {any} */ e) => e.kind);
+  assert.equal(kinds().length, 51);
+
+  const file = statePath(root, 'runs', `${rec.id}.jsonl`);
+  const line = JSON.stringify({ kind: 'reply', text: 'done' });
+  fs.appendFileSync(file, line.slice(0, 10)); // the agent is mid-write
+  const origFile = fs.default.readFileSync;
+  const origSync = fs.default.readSync;
+  let read = 0;
+  fs.default.readFileSync = /** @type {any} */ ((/** @type {any[]} */ ...a) => {
+    const out = origFile(.../** @type {[any]} */ (a));
+    read += out.length;
+    return out;
+  });
+  fs.default.readSync = /** @type {any} */ ((/** @type {any[]} */ ...a) => {
+    const n = origSync(.../** @type {[any, any]} */ (a));
+    read += n;
+    return n;
+  });
+  syncBuiltinESMExports();
+  try {
+    assert.equal(kinds().length, 51, 'the partial line waits');
+    fs.appendFileSync(file, `${line.slice(10)}\n`);
+    assert.deepEqual(kinds().slice(-2), ['result', 'reply'], 'finished: parsed once');
+    assert.equal(kinds().length, 52);
+  } finally {
+    fs.default.readFileSync = origFile;
+    fs.default.readSync = origSync;
+    syncBuiltinESMExports();
+  }
+  assert.ok(read < 100_000, `read ${read} bytes for a few new lines`);
+});
